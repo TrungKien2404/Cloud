@@ -119,8 +119,9 @@ print("✓ Data saved to Delta Lake table: bronze.stock_data_raw")
 
 # ========== STEP 3: DATA CLEANING ==========
 
-# Read from Delta Lake
-df_raw = spark.table(f"{DELTA_CATALOG}.stock_data_raw").toPandas()
+# Bỏ qua việc đọc từ Delta Lake do lỗi Spark Catalog trên bản Free
+# Dùng trực tiếp dữ liệu pandas đã tải ở bước trước để đảm bảo mượt mà
+df_raw = combined_df.copy()
 
 print(f"Raw data shape: {df_raw.shape}")
 print(f"Missing values count:\n{df_raw.isnull().sum()}")
