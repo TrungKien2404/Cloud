@@ -107,6 +107,9 @@ print(f"Combined data shape: {combined_df.shape}")
 # Convert to Spark DataFrame (for Databricks)
 spark_df = spark.createDataFrame(combined_df)
 
+# Xử lý lỗi SCHEMA_NOT_FOUND: Tạo Database/Schema nếu nó chưa tồn tại trên hệ thống Databricks
+spark.sql(f"CREATE DATABASE IF NOT EXISTS {DELTA_CATALOG}")
+
 # Save to Delta Lake (raw table)
 spark_df.write.mode("overwrite").option("mergeSchema", "true").saveAsTable(f"{DELTA_CATALOG}.stock_data_raw")
 
