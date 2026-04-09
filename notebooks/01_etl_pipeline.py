@@ -65,6 +65,10 @@ def fetch_stock_data(ticker):
         # Download từ Yahoo Finance
         df = yf.download(ticker, start=start_date, end=end_date, progress=False)
         
+        # Sửa lỗi yfinance phiên bản mới trả về MultiIndex (chứa kí tự không hợp lệ cho Delta Lake)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = [col[0] for col in df.columns]
+        
         # Add metadata columns
         df['Ticker'] = ticker
         df['FetchDate'] = datetime.now()
