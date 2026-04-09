@@ -1,0 +1,19 @@
+# Environments
+venv/
+env/
+.venv/
+.env
+
+# Cache
+__pycache__/
+*.pyc
+
+# Data & Models
+data/raw/
+data/processed/
+models/*.pkl
+models/*.h5
+
+# OS
+.DS_Store
+Thumbs.db
