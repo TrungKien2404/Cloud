@@ -1,5 +1,7 @@
 # 📈 Hệ Thống Dự Đoán Giá Cổ Phiếu AI (Stock Prediction System)
 
+![Architecture Diagram](docs/architecture.png)
+
 Dự án này là một hệ thống Machine Learning End-to-End hoàn chỉnh, dự báo biến động giá cổ phiếu trên thị trường dựa trên lịch sử giao dịch và các chỉ báo phân tích kỹ thuật chuyên sâu.
 
 ---
