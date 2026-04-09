@@ -1,0 +1,562 @@
+# ====================================================================
+# Dashboard Module - Interactive Visualization
+# ====================================================================
+# Module: dashboard/dashboard.py
+#
+# Mục đích: Tạo interactive dashboard sử dụng Streamlit & Plotly
+# - Hiển thị giá thực tế vs dự đoán
+# - Multi-stock comparison
+# - Technical indicators visualization
+# - Model performance metrics
+# - Real-time updates
+#
+# ====================================================================
+
+import streamlit as st
+import plotly.graph_objects as go
+import plotly.express as px
+import pandas as pd
+import numpy as np
+import logging
+from datetime import datetime, timedelta
+from typing import Dict, Optional
+
+logger = logging.getLogger(__name__)
+
+class StockDashboard:
+    """
+    Interactive dashboard cho stock prediction system
+    
+    Features:
+        - Price history visualization
+        - Prediction vs Actual comparison
+        - Technical indicators (MA, RSI)
+        - Multi-stock analysis
+        - Model performance metrics
+    """
+    
+    def __init__(self, page_title: str = "Stock Price Prediction Dashboard"):
+        """
+        Khởi tạo Dashboard
+        
+        Args:
+            page_title: Title của Streamlit page
+        """
+        self.page_title = page_title
+        self._configure_streamlit()
+    
+    def _configure_streamlit(self) -> None:
+        """Cấu hình Streamlit settings"""
+        st.set_page_config(
+            page_title=self.page_title,
+            layout="wide",
+            initial_sidebar_state="expanded"
+        )
+        
+        # Custom CSS
+        st.markdown("""
+            <style>
+                .main {background-color: #f5f5f5;}
+                .metric-card {
+                    background-color: white;
+                    padding: 20px;
+                    border-radius: 10px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }
+            </style>
+        """, unsafe_allow_html=True)
+    
+    # ========== PAGE HEADER ==========
+    
+    def render_header(self) -> None:
+        """Render main header"""
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            st.title("📈 Stock Price Prediction Dashboard")
+            st.markdown("---")
+        
+        with col2:
+            st.metric("Last Updated", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    
+    # ========== PRICE ANALYSIS ==========
+    
+    def plot_price_history(
+        self,
+        df: pd.DataFrame,
+        ticker: str,
+        ma_columns: list = None
+    ) -> go.Figure:
+        """
+        Plot giá history với moving averages
+        
+        Args:
+            df: DataFrame chứa dữ liệu
+            ticker: Mã cổ phiếu
+            ma_columns: Danh sách MA columns (e.g., ['MA10', 'MA20'])
+            
+        Returns:
+            Plotly Figure
+        """
+        fig = go.Figure()
+        
+        # Add closing price
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=df['Close'],
+            name='Closing Price',
+            mode='lines',
+            line=dict(color='blue', width=2)
+        ))
+        
+        # Add moving averages
+        if ma_columns:
+            colors = ['orange', 'red', 'green']
+            for i, ma_col in enumerate(ma_columns):
+                if ma_col in df.columns:
+                    fig.add_trace(go.Scatter(
+                        x=df.index,
+                        y=df[ma_col],
+                        name=ma_col,
+                        mode='lines',
+                        line=dict(color=colors[i % len(colors)], width=1, dash='dash')
+                    ))
+        
+        # Update layout
+        fig.update_layout(
+            title=f"{ticker} - Price History with Moving Averages",
+            xaxis_title="Date",
+            yaxis_title="Price (USD)",
+            hovermode='x unified',
+            height=500
+        )
+        
+        return fig
+    
+    def plot_prediction_vs_actual(
+        self,
+        df_pred: pd.DataFrame,
+        ticker: str
+    ) -> go.Figure:
+        """
+        Plot predicted vs actual prices
+        
+        Args:
+            df_pred: DataFrame với Actual, Predicted columns
+            ticker: Mã cổ phiếu
+            
+        Returns:
+            Plotly Figure
+        """
+        fig = go.Figure()
+        
+        # Add actual prices
+        fig.add_trace(go.Scatter(
+            x=df_pred.index,
+            y=df_pred['Actual'],
+            name='Actual Price',
+            mode='lines',
+            line=dict(color='blue', width=2)
+        ))
+        
+        # Add predicted prices
+        fig.add_trace(go.Scatter(
+            x=df_pred.index,
+            y=df_pred['Predicted'],
+            name='Predicted Price',
+            mode='lines+markers',
+            line=dict(color='red', width=2),
+            marker=dict(size=4)
+        ))
+        
+        # Update layout
+        fig.update_layout(
+            title=f"{ticker} - Prediction vs Actual",
+            xaxis_title="Date",
+            yaxis_title="Price (USD)",
+            hovermode='x unified',
+            height=500
+        )
+        
+        return fig
+    
+    def plot_prediction_error(self, df_pred: pd.DataFrame) -> go.Figure:
+        """
+        Plot prediction error over time
+        
+        Args:
+            df_pred: DataFrame với Error column
+            
+        Returns:
+            Plotly Figure
+        """
+        fig = go.Figure()
+        
+        # Add error bars
+        fig.add_trace(go.Bar(
+            x=df_pred.index,
+            y=df_pred['Error'],
+            name='Absolute Error',
+            marker=dict(color='indianred')
+        ))
+        
+        # Add mean error line
+        mean_error = df_pred['Error'].mean()
+        fig.add_hline(
+            y=mean_error,
+            annotation_text=f"Mean Error: ${mean_error:.2f}",
+            line_dash="dash",
+            line_color="green"
+        )
+        
+        fig.update_layout(
+            title="Prediction Error Over Time",
+            xaxis_title="Date",
+            yaxis_title="Absolute Error ($)",
+            height=400
+        )
+        
+        return fig
+    
+    # ========== TECHNICAL INDICATORS ==========
+    
+    def plot_rsi(self, df: pd.DataFrame, ticker: str) -> go.Figure:
+        """
+        Plot RSI indicator
+        
+        Args:
+            df: DataFrame chứa RSI column
+            ticker: Mã cổ phiếu
+            
+        Returns:
+            Plotly Figure
+        """
+        fig = go.Figure()
+        
+        if 'RSI' not in df.columns:
+            st.warning("RSI data not available")
+            return fig
+        
+        # Add RSI line
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=df['RSI'],
+            name='RSI(14)',
+            mode='lines',
+            line=dict(color='purple', width=2)
+        ))
+        
+        # Add overbought/oversold zones
+        fig.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought (70)")
+        fig.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold (30)")
+        
+        fig.update_layout(
+            title=f"{ticker} - RSI (Relative Strength Index)",
+            xaxis_title="Date",
+            yaxis_title="RSI",
+            hovermode='x unified',
+            height=400,
+            yaxis=dict(range=[0, 100])
+        )
+        
+        return fig
+    
+    def plot_volatility(self, df: pd.DataFrame, ticker: str) -> go.Figure:
+        """
+        Plot volatility over time
+        
+        Args:
+            df: DataFrame chứa Volatility column
+            ticker: Mã cổ phiếu
+            
+        Returns:
+            Plotly Figure
+        """
+        fig = go.Figure()
+        
+        if 'Volatility' not in df.columns:
+            st.warning("Volatility data not available")
+            return fig
+        
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=df['Volatility'],
+            name='Volatility (20-day)',
+            mode='lines',
+            fill='tozeroy',
+            line=dict(color='orange', width=2)
+        ))
+        
+        fig.update_layout(
+            title=f"{ticker} - Price Volatility",
+            xaxis_title="Date",
+            yaxis_title="Volatility",
+            hovermode='x unified',
+            height=400
+        )
+        
+        return fig
+    
+    # ========== MULTI-STOCK COMPARISON ==========
+    
+    def plot_multiple_stocks(
+        self,
+        stock_data: Dict[str, pd.DataFrame]
+    ) -> go.Figure:
+        """
+        Plot normalized prices của multiple stocks
+        
+        Args:
+            stock_data: Dictionary mapping ticker -> DataFrame
+            
+        Returns:
+            Plotly Figure
+        """
+        fig = go.Figure()
+        
+        colors = px.colors.qualitative.Set2
+        
+        for i, (ticker, df) in enumerate(stock_data.items()):
+            # Normalize prices to start at 100
+            normalized = (df['Close'] / df['Close'].iloc[0]) * 100
+            
+            fig.add_trace(go.Scatter(
+                x=normalized.index,
+                y=normalized,
+                name=ticker,
+                mode='lines',
+                line=dict(color=colors[i % len(colors)], width=2)
+            ))
+        
+        fig.update_layout(
+            title="Multi-Stock Price Comparison (Normalized to 100)",
+            xaxis_title="Date",
+            yaxis_title="Indexed Price",
+            hovermode='x unified',
+            height=500
+        )
+        
+        return fig
+    
+    # ========== MODEL METRICS ==========
+    
+    def display_model_metrics(self, metrics: Dict[str, Dict]) -> None:
+        """
+        Display model performance metrics
+        
+        Args:
+            metrics: Dictionary mapping model_name -> {rmse, mae, r2}
+        """
+        st.subheader("📊 Model Performance Comparison")
+        
+        # Create comparison dataframe
+        comparison_data = []
+        for model_name, model_metrics in metrics.items():
+            comparison_data.append({
+                'Model': model_name,
+                'RMSE': model_metrics['rmse'],
+                'MAE': model_metrics['mae'],
+                'R² Score': model_metrics['r2']
+            })
+        
+        df_comparison = pd.DataFrame(comparison_data)
+        
+        # Display metrics
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Best RMSE", f"${df_comparison['RMSE'].min():.4f}")
+        with col2:
+            st.metric("Best MAE", f"${df_comparison['MAE'].min():.4f}")
+        with col3:
+            st.metric("Best R² Score", f"{df_comparison['R² Score'].max():.4f}")
+        
+        # Display table
+        st.dataframe(df_comparison, use_container_width=True)
+    
+    def plot_metrics_comparison(self, metrics: Dict[str, Dict]) -> None:
+        """
+        Plot metrics comparison chart
+        
+        Args:
+            metrics: Dictionary mapping model_name -> {rmse, mae, r2}
+        """
+        comparison_data = []
+        for model_name, model_metrics in metrics.items():
+            comparison_data.append({
+                'Model': model_name,
+                'RMSE': model_metrics['rmse'],
+                'MAE': model_metrics['mae'],
+                'R² Score': model_metrics['r2']
+            })
+        
+        df_comp = pd.DataFrame(comparison_data)
+        
+        # Plot RMSE comparison
+        fig1 = px.bar(df_comp, x='Model', y='RMSE', title='RMSE Comparison (Lower is Better)',
+                     color='RMSE', color_continuous_scale='Reds')
+        st.plotly_chart(fig1, use_container_width=True)
+        
+        # Plot MAE comparison
+        fig2 = px.bar(df_comp, x='Model', y='MAE', title='MAE Comparison (Lower is Better)',
+                     color='MAE', color_continuous_scale='Oranges')
+        st.plotly_chart(fig2, use_container_width=True)
+        
+        # Plot R² comparison
+        fig3 = px.bar(df_comp, x='Model', y='R² Score', title='R² Score Comparison (Higher is Better)',
+                     color='R² Score', color_continuous_scale='Greens')
+        st.plotly_chart(fig3, use_container_width=True)
+    
+    # ========== CORRELATION HEATMAP ==========
+    
+    def plot_correlation_heatmap(self, df: pd.DataFrame) -> None:
+        """
+        Plot correlation heatmap của features
+        
+        Args:
+            df: DataFrame với numeric columns
+        """
+        # Select numeric columns
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        
+        if len(numeric_cols) > 1:
+            # Calculate correlation
+            corr_matrix = df[numeric_cols].corr()
+            
+            # Plot heatmap
+            fig = px.imshow(
+                corr_matrix,
+                labels=dict(color="Correlation"),
+                x=corr_matrix.columns,
+                y=corr_matrix.columns,
+                color_continuous_scale="RdBu",
+                zmin=-1,
+                zmax=1,
+                height=600,
+                width=600
+            )
+            
+            fig.update_layout(title="Feature Correlation Heatmap")
+            st.plotly_chart(fig, use_container_width=True)
+    
+    # ========== STATISTICS PANEL ==========
+    
+    def display_statistics(self, df: pd.DataFrame) -> None:
+        """
+        Display data statistics
+        
+        Args:
+            df: DataFrame
+        """
+        st.subheader("📈 Data Statistics")
+        
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        with col1:
+            st.metric("Latest Close", f"${df['Close'].iloc[-1]:.2f}")
+        
+        with col2:
+            st.metric("52-Week High", f"${df['Close'].max():.2f}")
+        
+        with col3:
+            st.metric("52-Week Low", f"${df['Close'].min():.2f}")
+        
+        with col4:
+            avg_return = df['Daily_Return'].mean() * 100 if 'Daily_Return' in df.columns else 0
+            st.metric("Avg Daily Return", f"{avg_return:.2f}%")
+        
+        with col5:
+            volatility = df['Daily_Return'].std() * 100 if 'Daily_Return' in df.columns else 0
+            st.metric("Volatility", f"{volatility:.2f}%")
+
+
+# ========== MAIN EXECUTION ==========
+
+if __name__ == "__main__":
+    import os
+    import glob
+    import pickle
+    
+    # Initialize dashboard
+    dashboard = StockDashboard()
+    
+    # Render header
+    dashboard.render_header()
+    
+    data_path = "./data/processed/processed_stock_data.parquet"
+    if not os.path.exists(data_path):
+        data_path = "../data/processed/processed_stock_data.parquet"
+        
+    try:
+        df = pd.read_parquet(data_path)
+        
+        tickers = df['Ticker'].unique().tolist()
+        st.sidebar.title("🎛️ Configurations")
+        selected_ticker = st.sidebar.selectbox("Select Stock", tickers)
+        
+        # Prepare Data for Ticker
+        df_ticker = df[df['Ticker'] == selected_ticker].copy()
+        if 'Date' in df_ticker.columns:
+            df_ticker['Date'] = pd.to_datetime(df_ticker['Date'])
+            df_ticker.set_index('Date', inplace=True)
+            
+        dashboard.display_statistics(df_ticker)
+        
+        # Create Tabs
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📈 Price Analysis", "🎯 Predictions", "📊 Technical Indicators", "🔗 Multi-Stock", "🧩 Correlations"])
+        
+        with tab1:
+            st.plotly_chart(dashboard.plot_price_history(df_ticker, selected_ticker, ['MA10', 'MA20', 'MA50']), use_container_width=True)
+            
+        with tab2:
+            st.markdown("### Model Predictions (Target Return)")
+            model_dir = "./models" if os.path.exists("./models") else "../models"
+            model_files = glob.glob(os.path.join(model_dir, "*.pkl"))
+            if model_files:
+                selected_model_path = st.selectbox("Select Trained Model", model_files, format_func=lambda x: os.path.basename(x))
+                with open(selected_model_path, 'rb') as f:
+                    model = pickle.load(f)
+                
+                # Clean features like in training
+                exclude_cols = ['Ticker', 'FetchDate', 'Target_Price', 'Target_Return']
+                features_cols = [c for c in df_ticker.columns if c not in exclude_cols and pd.api.types.is_numeric_dtype(df_ticker[c])]
+                
+                X = df_ticker[features_cols].fillna(0).values
+                y_pred_return = model.predict(X)
+                
+                df_pred = pd.DataFrame(index=df_ticker.index)
+                df_pred['Actual'] = df_ticker['Target_Return'] if 'Target_Return' in df_ticker.columns else 0
+                df_pred['Predicted'] = y_pred_return
+                df_pred['Error'] = np.abs(df_pred['Actual'] - df_pred['Predicted'])
+                
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    st.plotly_chart(dashboard.plot_prediction_vs_actual(df_pred.tail(100), selected_ticker), use_container_width=True)
+                with col2:
+                    st.plotly_chart(dashboard.plot_prediction_error(df_pred.tail(100)), use_container_width=True)
+            else:
+                st.warning("No trained models found. Run training pipeline first to view predictions.")
+                
+        with tab3:
+            colA, colB = st.columns(2)
+            with colA:
+                st.plotly_chart(dashboard.plot_rsi(df_ticker, selected_ticker), use_container_width=True)
+            with colB:
+                st.plotly_chart(dashboard.plot_volatility(df_ticker, selected_ticker), use_container_width=True)
+                
+        with tab4:
+            stock_data = {}
+            for t in tickers:
+                df_t = df[df['Ticker'] == t].copy()
+                if 'Date' in df_t.columns:
+                    df_t['Date'] = pd.to_datetime(df_t['Date'])
+                    df_t.set_index('Date', inplace=True)
+                stock_data[t] = df_t
+            st.plotly_chart(dashboard.plot_multiple_stocks(stock_data), use_container_width=True)
+            
+        with tab5:
+            dashboard.plot_correlation_heatmap(df_ticker)
+            
+    except Exception as e:
+        st.error(f"Error loading dashboard data: {str(e)}")
+        st.info("Make sure the ETL pipeline has run successfully and generated the processed data.")

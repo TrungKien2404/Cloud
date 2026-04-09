@@ -1,0 +1,142 @@
+# ====================================================================
+# Stock Prediction System Configuration
+# ====================================================================
+
+# Data Configuration
+data:
+  # Tickers to track: Apple, Tech stocks (TSLA, MSFT)
+  tickers:
+    - "AAPL"
+    - "TSLA"
+    - "MSFT"
+  
+  # Historical data period (in years)
+  history_years: 5
+  
+  # Data directory
+  raw_data_path: "/dbfs/mnt/data/raw"
+  processed_data_path: "/dbfs/mnt/data/processed"
+  delta_path: "/dbfs/user/hive/warehouse/stock_data"
+
+# ETL Configuration
+etl:
+  # Feature engineering settings
+  moving_average_windows:
+    - 10   # MA10
+    - 20   # MA20
+    - 50   # MA50
+  
+  # Lag feature windows
+  lag_windows:
+    - 1
+    - 5
+    - 10
+  
+  # Technical indicators
+  rsi_period: 14
+  
+  # Test/train split
+  test_size: 0.2
+  validation_size: 0.1
+
+# Machine Learning Configuration
+ml:
+  # Models to train
+  models:
+    - type: "linear_regression"
+      params:
+        max_iter: 1000
+    
+    - type: "random_forest"
+      params:
+        n_estimators: 100
+        max_depth: 10
+        min_samples_split: 5
+    
+    - type: "gradient_boosting"
+      params:
+        n_estimators: 100
+        learning_rate: 0.1
+        max_depth: 5
+  
+  # Training configuration
+  test_size: 0.2
+  random_state: 42
+  
+  # Model storage
+  model_registry_path: "/dbfs/mnt/models"
+  
+  # Performance metrics
+  metrics:
+    - rmse
+    - mae
+    - r_squared
+
+# Databricks Configuration
+databricks:
+  # Cluster configuration
+  cluster_type: "job_cluster"
+  spark_version: "12.2.x-scala2.12"
+  node_type_id: "i3.xlarge"
+  num_workers: 2
+  
+  # Job configuration
+  jobs:
+    ingestion:
+      name: "Stock_Ingestion_Job"
+      schedule: "0 9 * * *"  # Daily at 9 AM
+    
+    etl:
+      name: "Stock_ETL_Job"
+      schedule: "0 10 * * *"  # Daily at 10 AM
+    
+    training:
+      name: "Stock_Model_Training_Job"
+      schedule: "0 11 * * *"  # Daily at 11 AM
+    
+    inference:
+      name: "Stock_Inference_Job"
+      schedule: "0 12 * * *"  # Daily at 12 PM
+
+# API Configuration
+api:
+  host: "0.0.0.0"
+  port: 8000
+  debug: true
+  workers: 4
+  
+  # Rate limiting
+  rate_limit: 100  # requests per minute
+  
+  # CORS
+  cors_origins:
+    - "http://localhost:8501"
+    - "http://localhost:3000"
+
+# Dashboard Configuration
+dashboard:
+  # Streamlit settings
+  title: "Stock Price Prediction Dashboard"
+  layout: "wide"
+  theme: "light"
+  
+  # Refresh interval (seconds)
+  refresh_interval: 300
+  
+  # Charts to display
+  charts:
+    - "price_history"
+    - "prediction_vs_actual"
+    - "technical_indicators"
+    - "model_comparison"
+    - "correlation_heatmap"
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  log_file: "/dbfs/logs/stock_prediction.log"
+  dbfs_logging: true
+
+# Environment
+environment: "production"  # development, staging, production
