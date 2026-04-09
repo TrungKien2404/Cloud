@@ -524,6 +524,66 @@ if __name__ == "__main__":
                 X = df_ticker[features_cols].fillna(0).values
                 y_pred_return = model.predict(X)
                 
+                # ---------------- NEW FEATURE: TOMORROW'S PREDICTION ----------------
+                latest_pred_return = y_pred_return[-1]
+                latest_close = df_ticker['Close'].iloc[-1]
+                latest_date = df_ticker.index[-1]
+                
+                # Predict next valid business day
+                next_day = latest_date + timedelta(days=1)
+                if next_day.weekday() >= 5: # 5 is Saturday, 6 is Sunday
+                    days_to_add = 7 - next_day.weekday()
+                    next_day += timedelta(days=days_to_add)
+                
+                predicted_next_close = latest_close * (1 + latest_pred_return)
+                price_change = predicted_next_close - latest_close
+                
+                # AI Recommendation Logic
+                if latest_pred_return >= 0.01:
+                    reco_status = "🟢 TÍCH CỰC MUA (STRONG BUY)"
+                    reco_desc = "Mô hình dự đoán cổ phiếu sẽ tăng trưởng tốt (>1%). Khuyến nghị giải ngân."
+                    box_color = "#e6ffe6"
+                    text_color = "green"
+                elif 0 <= latest_pred_return < 0.01:
+                    reco_status = "🟡 CÂN NHẮC GIỮ (HOLD / BUY)"
+                    reco_desc = "Tăng trưởng nhẹ (<1%). Có thể giữ để quan sát hoặc mua thăm dò."
+                    box_color = "#ffffe6"
+                    text_color = "#b3b300"
+                elif -0.01 < latest_pred_return < 0:
+                    reco_status = "🟠 DẤU HIỆU XẤU (HOLD / SELL)"
+                    reco_desc = "Dự kiến giảm nhẹ. Cần theo dõi thêm hoặc hạ tỷ trọng."
+                    box_color = "#fff0e6"
+                    text_color = "#ff8000"
+                else:
+                    reco_status = "🔴 BÁN GẤP (STRONG SELL)"
+                    reco_desc = "Cảnh báo giảm mạnh (âm >1%). Ưu tiên chốt lời/cắt lỗ bảo toàn vốn."
+                    box_color = "#ffe6e6"
+                    text_color = "red"
+                
+                st.markdown(f"### 🤖 Phân Tích & Khuyến Nghị Trực Tiếp Cho Ngày Tiếp Theo: {next_day.strftime('%d/%m/%Y')}")
+                st.markdown(f"""
+                <div style="background-color: {box_color}; padding: 20px; border-radius: 10px; margin-bottom: 25px; border-left: 5px solid {text_color};">
+                    <h2 style="color: {text_color}; margin-top: 0;">{reco_status}</h2>
+                    <p style="font-size: 16px;">{reco_desc}</p>
+                    <div style="display: flex; justify-content: space-between; margin-top: 20px; flex-wrap: wrap;">
+                        <div style="margin-right: 20px;">
+                            <p style="margin: 0; color: #555;">Chốt Phiên Trước ({latest_date.strftime('%d/%m/%Y')}):</p>
+                            <h3 style="margin: 0;">${latest_close:.2f}</h3>
+                        </div>
+                        <div style="margin-right: 20px;">
+                            <p style="margin: 0; color: #555;">Giá Dự Đoán Mới ({next_day.strftime('%d/%m/%Y')}):</p>
+                            <h3 style="margin: 0; color: {text_color};">${predicted_next_close:.2f} </h3>
+                        </div>
+                        <div>
+                            <p style="margin: 0; color: #555;">Biến Động Dự Kiến:</p>
+                            <h3 style="margin: 0; color: {text_color};">${price_change:+.2f} ({latest_pred_return*100:+.2f}%)</h3>
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                st.markdown("---")
+                # --------------------------------------------------------------------
+                
                 df_pred = pd.DataFrame(index=df_ticker.index)
                 df_pred['Actual'] = df_ticker['Target_Return'] if 'Target_Return' in df_ticker.columns else 0
                 df_pred['Predicted'] = y_pred_return
