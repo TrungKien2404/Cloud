@@ -540,27 +540,27 @@ if __name__ == "__main__":
                 
                 # AI Recommendation Logic
                 if latest_pred_return >= 0.01:
-                    reco_status = "🟢 TÍCH CỰC MUA (STRONG BUY)"
+                    reco_status = "🟢 STRONG BUY"
                     reco_desc = "Mô hình dự đoán cổ phiếu sẽ tăng trưởng tốt (>1%). Khuyến nghị giải ngân."
                     box_color = "#e6ffe6"
                     text_color = "green"
                 elif 0 <= latest_pred_return < 0.01:
-                    reco_status = "🟡 CÂN NHẮC GIỮ (HOLD / BUY)"
+                    reco_status = "🟡 HOLD / BUY"
                     reco_desc = "Tăng trưởng nhẹ (<1%). Có thể giữ để quan sát hoặc mua thăm dò."
                     box_color = "#ffffe6"
                     text_color = "#b3b300"
                 elif -0.01 < latest_pred_return < 0:
-                    reco_status = "🟠 DẤU HIỆU XẤU (HOLD / SELL)"
+                    reco_status = "🟠 HOLD / SELL"
                     reco_desc = "Dự kiến giảm nhẹ. Cần theo dõi thêm hoặc hạ tỷ trọng."
                     box_color = "#fff0e6"
                     text_color = "#ff8000"
                 else:
-                    reco_status = "🔴 BÁN GẤP (STRONG SELL)"
+                    reco_status = "🔴 STRONG SELL"
                     reco_desc = "Cảnh báo giảm mạnh (âm >1%). Ưu tiên chốt lời/cắt lỗ bảo toàn vốn."
                     box_color = "#ffe6e6"
                     text_color = "red"
                 
-                st.markdown(f"### 🤖 Phân Tích & Khuyến Nghị Trực Tiếp Cho Ngày Tiếp Theo: {next_day.strftime('%d/%m/%Y')}")
+                st.markdown(f"###  Phân Tích & Khuyến Nghị Trực Tiếp Cho Ngày Tiếp Theo: {next_day.strftime('%d/%m/%Y')}")
                 st.markdown(f"""
                 <div style="background-color: {box_color}; padding: 20px; border-radius: 10px; margin-bottom: 25px; border-left: 5px solid {text_color};">
                     <h2 style="color: {text_color}; margin-top: 0;">{reco_status}</h2>
