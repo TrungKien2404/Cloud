@@ -23,6 +23,13 @@ from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
+# Configure Streamlit page at global scope (MUST be first)
+st.set_page_config(
+    page_title="Stock Price Prediction Dashboard",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 class StockDashboard:
     """
     Interactive dashboard cho stock prediction system
@@ -47,11 +54,7 @@ class StockDashboard:
     
     def _configure_streamlit(self) -> None:
         """Cấu hình Streamlit settings"""
-        st.set_page_config(
-            page_title=self.page_title,
-            layout="wide",
-            initial_sidebar_state="expanded"
-        )
+        pass
         
         # Custom CSS
         st.markdown("""
@@ -395,6 +398,15 @@ class StockDashboard:
         # Plot RMSE comparison
         fig1 = px.bar(df_comp, x='Model', y='RMSE', title='RMSE Comparison (Lower is Better)',
                      color='RMSE', color_continuous_scale='Reds')
+        
+        # Plot MAE comparison
+        fig2 = px.bar(df_comp, x='Model', y='MAE', title='MAE Comparison (Lower is Better)',
+                     color='MAE', color_continuous_scale='Oranges')
+        
+        # Plot R² Score comparison
+        fig3 = px.bar(df_comp, x='Model', y='R² Score', title='R² Score Comparison (Higher is Better)',
+                     color='R² Score', color_continuous_scale='Greens')
+        
         st.plotly_chart(fig1, width='stretch')
         st.plotly_chart(fig2, width='stretch')
         st.plotly_chart(fig3, width='stretch')
