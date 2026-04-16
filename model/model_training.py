@@ -377,6 +377,31 @@ class StockModelTrainer:
         except Exception as e:
             logger.error(f"Error saving model: {str(e)}")
             raise
+            
+    def save_best_model_as_latest(self) -> str:
+        """
+        Lưu mô hình tốt nhất vào một file cố định để dễ dàng sử dụng trong Dashboard.
+        File này sẽ bị ghi đè mỗi khi chạy huấn luyện mới.
+        
+        Returns:
+            File path của best model latest
+        """
+        if self.best_model is None:
+            raise ValueError("No best model selected")
+            
+        try:
+            file_path = os.path.join(self.model_save_path, "best_model_latest.pkl")
+            
+            # Save best model to fixed filename
+            with open(file_path, 'wb') as f:
+                pickle.dump(self.best_model, f)
+                
+            logger.info(f"Best model '{self.best_model_name}' saved as latest to {file_path}")
+            return file_path
+            
+        except Exception as e:
+            logger.error(f"Error saving best model as latest: {str(e)}")
+            raise
     
     def save_all_models(self) -> Dict[str, str]:
         """
@@ -464,6 +489,7 @@ class StockModelTrainer:
         
         # Step 6: Save models
         saved_models = self.save_all_models()
+        self.save_best_model_as_latest()
         
         logger.info("=" * 70)
         logger.info("TRAINING PIPELINE COMPLETED")

@@ -9,8 +9,8 @@ __pycache__/
 *.pyc
 
 # Data & Models
-data/raw/
-data/processed/
+# data/raw/
+# data/processed/
 models/*.pkl
 models/*.h5
 

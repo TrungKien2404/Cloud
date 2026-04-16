@@ -513,7 +513,20 @@ if __name__ == "__main__":
             model_dir = "./models" if os.path.exists("./models") else "../models"
             model_files = glob.glob(os.path.join(model_dir, "*.pkl"))
             if model_files:
-                selected_model_path = st.selectbox("Select Trained Model", model_files, format_func=lambda x: os.path.basename(x))
+                # Tìm xem có file 'best_model_latest.pkl' không để làm mặc định
+                latest_model_name = "best_model_latest.pkl"
+                default_index = 0
+                for i, f_path in enumerate(model_files):
+                    if os.path.basename(f_path) == latest_model_name:
+                        default_index = i
+                        break
+                
+                selected_model_path = st.selectbox(
+                    "Select Trained Model", 
+                    model_files, 
+                    index=default_index,
+                    format_func=lambda x: "✨ Best Model (Latest)" if os.path.basename(x) == latest_model_name else os.path.basename(x)
+                )
                 with open(selected_model_path, 'rb') as f:
                     model = pickle.load(f)
                 
