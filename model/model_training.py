@@ -21,7 +21,7 @@ import logging
 import numpy as np
 import pandas as pd
 from typing import Dict, Tuple, Optional
-import pickle
+import joblib
 import os
 from datetime import datetime
 
@@ -368,8 +368,7 @@ class StockModelTrainer:
             file_path = os.path.join(self.model_save_path, f"{safe_name}_{timestamp}.pkl")
             
             # Save model
-            with open(file_path, 'wb') as f:
-                pickle.dump(model, f)
+            joblib.dump(model, file_path)
             
             logger.info(f"Model '{model_name}' saved to {file_path}")
             return file_path
@@ -393,8 +392,7 @@ class StockModelTrainer:
             file_path = os.path.join(self.model_save_path, "best_model_latest.pkl")
             
             # Save best model to fixed filename
-            with open(file_path, 'wb') as f:
-                pickle.dump(self.best_model, f)
+            joblib.dump(self.best_model, file_path)
                 
             logger.info(f"Best model '{self.best_model_name}' saved as latest to {file_path}")
             return file_path
@@ -429,8 +427,7 @@ class StockModelTrainer:
             Loaded model object
         """
         try:
-            with open(file_path, 'rb') as f:
-                model = pickle.load(f)
+            model = joblib.load(file_path)
             
             logger.info(f"Model loaded from {file_path}")
             return model

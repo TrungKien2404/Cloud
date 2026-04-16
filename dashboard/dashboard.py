@@ -372,7 +372,7 @@ class StockDashboard:
             st.metric("Best R² Score", f"{df_comparison['R² Score'].max():.4f}")
         
         # Display table
-        st.dataframe(df_comparison, use_container_width=True)
+        st.dataframe(df_comparison, width='stretch')
     
     def plot_metrics_comparison(self, metrics: Dict[str, Dict]) -> None:
         """
@@ -395,17 +395,9 @@ class StockDashboard:
         # Plot RMSE comparison
         fig1 = px.bar(df_comp, x='Model', y='RMSE', title='RMSE Comparison (Lower is Better)',
                      color='RMSE', color_continuous_scale='Reds')
-        st.plotly_chart(fig1, use_container_width=True)
-        
-        # Plot MAE comparison
-        fig2 = px.bar(df_comp, x='Model', y='MAE', title='MAE Comparison (Lower is Better)',
-                     color='MAE', color_continuous_scale='Oranges')
-        st.plotly_chart(fig2, use_container_width=True)
-        
-        # Plot R² comparison
-        fig3 = px.bar(df_comp, x='Model', y='R² Score', title='R² Score Comparison (Higher is Better)',
-                     color='R² Score', color_continuous_scale='Greens')
-        st.plotly_chart(fig3, use_container_width=True)
+        st.plotly_chart(fig1, width='stretch')
+        st.plotly_chart(fig2, width='stretch')
+        st.plotly_chart(fig3, width='stretch')
     
     # ========== CORRELATION HEATMAP ==========
     
@@ -437,7 +429,7 @@ class StockDashboard:
             )
             
             fig.update_layout(title="Feature Correlation Heatmap")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
     
     # ========== STATISTICS PANEL ==========
     
@@ -475,7 +467,7 @@ class StockDashboard:
 if __name__ == "__main__":
     import os
     import glob
-    import pickle
+    import joblib
     
     # Initialize dashboard
     dashboard = StockDashboard()
@@ -506,7 +498,7 @@ if __name__ == "__main__":
         tab1, tab2, tab3, tab4, tab5 = st.tabs(["📈 Price Analysis", "🎯 Predictions", "📊 Technical Indicators", "🔗 Multi-Stock", "🧩 Correlations"])
         
         with tab1:
-            st.plotly_chart(dashboard.plot_price_history(df_ticker, selected_ticker, ['MA10', 'MA20', 'MA50']), use_container_width=True)
+            st.plotly_chart(dashboard.plot_price_history(df_ticker, selected_ticker, ['MA10', 'MA20', 'MA50']), width='stretch')
             
         with tab2:
             st.markdown("### Model Predictions (Target Return)")
@@ -527,8 +519,12 @@ if __name__ == "__main__":
                     index=default_index,
                     format_func=lambda x: "✨ Best Model (Latest)" if os.path.basename(x) == latest_model_name else os.path.basename(x)
                 )
-                with open(selected_model_path, 'rb') as f:
-                    model = pickle.load(f)
+                # Load model using joblib (now fully compatible after env sync)
+                try:
+                    model = joblib.load(selected_model_path)
+                except Exception as e:
+                    st.error(f"Error loading model: {e}")
+                    st.stop()
                 
                 # Clean features like in training
                 exclude_cols = ['Ticker', 'FetchDate', 'Target_Price', 'Target_Return']
@@ -544,9 +540,9 @@ if __name__ == "__main__":
                 
                 # Predict next valid business day
                 next_day = latest_date + timedelta(days=1)
-                if next_day.weekday() >= 5: # 5 is Saturday, 6 is Sunday
-                    days_to_add = 7 - next_day.weekday()
-                    next_day += timedelta(days=days_to_add)
+                # Skip weekends to find next trading day
+                while next_day.weekday() >= 5:  # 5=Saturday, 6=Sunday
+                    next_day += timedelta(days=1)
                 
                 predicted_next_close = latest_close * (1 + latest_pred_return)
                 price_change = predicted_next_close - latest_close
@@ -604,18 +600,18 @@ if __name__ == "__main__":
                 
                 col1, col2 = st.columns([2, 1])
                 with col1:
-                    st.plotly_chart(dashboard.plot_prediction_vs_actual(df_pred.tail(100), selected_ticker), use_container_width=True)
+                    st.plotly_chart(dashboard.plot_prediction_vs_actual(df_pred.tail(100), selected_ticker), width='stretch')
                 with col2:
-                    st.plotly_chart(dashboard.plot_prediction_error(df_pred.tail(100)), use_container_width=True)
+                    st.plotly_chart(dashboard.plot_prediction_error(df_pred.tail(100)), width='stretch')
             else:
                 st.warning("No trained models found. Run training pipeline first to view predictions.")
                 
         with tab3:
             colA, colB = st.columns(2)
             with colA:
-                st.plotly_chart(dashboard.plot_rsi(df_ticker, selected_ticker), use_container_width=True)
+                st.plotly_chart(dashboard.plot_rsi(df_ticker, selected_ticker), width='stretch')
             with colB:
-                st.plotly_chart(dashboard.plot_volatility(df_ticker, selected_ticker), use_container_width=True)
+                st.plotly_chart(dashboard.plot_volatility(df_ticker, selected_ticker), width='stretch')
                 
         with tab4:
             stock_data = {}
@@ -625,7 +621,7 @@ if __name__ == "__main__":
                     df_t['Date'] = pd.to_datetime(df_t['Date'])
                     df_t.set_index('Date', inplace=True)
                 stock_data[t] = df_t
-            st.plotly_chart(dashboard.plot_multiple_stocks(stock_data), use_container_width=True)
+            st.plotly_chart(dashboard.plot_multiple_stocks(stock_data), width='stretch')
             
         with tab5:
             dashboard.plot_correlation_heatmap(df_ticker)
