@@ -16,7 +16,7 @@
 # COMMAND ----------
 
 # Install libraries
-%pip install scikit-learn pandas numpy
+# %pip install scikit-learn pandas numpy
 
 # COMMAND ----------
 
@@ -32,15 +32,71 @@ from datetime import datetime
 
 # COMMAND ----------
 
+# ========== ENVIRONMENT DETECTION ==========
+
+# Detect if running on Databricks or Locally
+IS_DATABRICKS = "DATABRICKS_RUNTIME_VERSION" in os.environ
+print(f"Environment: {'DATABRICKS' if IS_DATABRICKS else 'LOCAL'}")
+
+# ========== SPARK SESSION MANAGEMENT ==========
+
+def get_spark_session():
+    """
+    Get or create a Spark session. 
+    1. First tries to use the existing global 'spark' if it's alive.
+    2. Then tries DatabricksSession (for Databricks Connect / Refresh).
+    3. On Local: Skips standard Spark initialization to avoid hanging on Windows 
+       if Java/winutils are not configured.
+    """
+    # 1. Try global spark first (standard on-cluster behavior)
+    try:
+        if 'spark' in globals():
+            s = globals()['spark']
+            # Run a lightweight operation to check if the session is alive
+            s.range(1).collect()
+            return s
+    except Exception:
+        # Session is likely expired or broken, will try to refresh below
+        pass
+
+    # 2. Try to refresh or create a new session (Databricks Connect)
+    try:
+        from databricks.connect import DatabricksSession
+        return DatabricksSession.builder.getOrCreate()
+    except (ImportError, Exception):
+        # 3. Local Fallback
+        if not IS_DATABRICKS:
+            print("Info: Running locally without Databricks Connect. Skipping local Spark initialization to avoid hanging.")
+            return None
+            
+        # 4. Databricks Fallback (on cluster but spark not in globals)
+        try:
+            from pyspark.sql import SparkSession
+            return SparkSession.builder.getOrCreate()
+        except Exception:
+            print("⚠️ Could not initialize Spark session.")
+            return None
+
+# Refresh session at the start
+spark = get_spark_session()
+
+# COMMAND ----------
+
 # ========== CONFIGURATION ==========
 
 DELTA_CATALOG = "bronze"
-<<<<<<< HEAD
-MODELS_PATH = "/Workspace/Users/y7prolpvo2018@gmail.com/Cloud/models"
-=======
-MODELS_PATH = "/dbfs/mnt/models"
->>>>>>> 383b956792a3d7dd9cabc8ad4291ac812e1bd434
 RANDOM_STATE = 42
+
+if IS_DATABRICKS:
+    MODELS_PATH = "/dbfs/mnt/models"
+    DATA_PATH = "/dbfs/mnt/data"
+else:
+    # Local paths for Windows/Local development
+    MODELS_PATH = os.path.join(os.getcwd(), "models")
+    DATA_PATH = os.path.join(os.getcwd(), "data")
+
+print(f"Models path: {MODELS_PATH}")
+print(f"Data path: {DATA_PATH}")
 
 # Create models directory if not exists
 os.makedirs(MODELS_PATH, exist_ok=True)
@@ -50,15 +106,25 @@ os.makedirs(MODELS_PATH, exist_ok=True)
 # ========== STEP 1: LOAD DATA FROM DELTA LAKE ==========
 
 # Load train/val/test data
-print("📥 Loading data from Delta Lake...")
+if spark is not None:
+    print("Loading data from Delta Lake...")
+    train_df = spark.table(f"{DELTA_CATALOG}.stock_data_train").toPandas()
+    val_df = spark.table(f"{DELTA_CATALOG}.stock_data_val").toPandas()
+    test_df = spark.table(f"{DELTA_CATALOG}.stock_data_test").toPandas()
+else:
+    print("Info: Spark not available. Loading data from local CSV files...")
+    train_df = pd.read_csv(os.path.join(DATA_PATH, "stock_data_train.csv"))
+    val_df = pd.read_csv(os.path.join(DATA_PATH, "stock_data_val.csv"))
+    test_df = pd.read_csv(os.path.join(DATA_PATH, "stock_data_test.csv"))
+    
+    # Ensure Date column is datetime
+    for df in [train_df, val_df, test_df]:
+        if 'Date' in df.columns:
+            df['Date'] = pd.to_datetime(df['Date'])
 
-train_df = spark.table(f"{DELTA_CATALOG}.stock_data_train").toPandas()
-val_df = spark.table(f"{DELTA_CATALOG}.stock_data_val").toPandas()
-test_df = spark.table(f"{DELTA_CATALOG}.stock_data_test").toPandas()
-
-print(f"✓ Train: {len(train_df)} records")
-print(f"✓ Val:   {len(val_df)} records")
-print(f"✓ Test:  {len(test_df)} records")
+print(f"[OK] Train: {len(train_df)} records")
+print(f"[OK] Val:   {len(val_df)} records")
+print(f"[OK] Test:  {len(test_df)} records")
 
 # COMMAND ----------
 
@@ -99,7 +165,7 @@ X_train_scaled = scaler.fit_transform(X_train)
 X_val_scaled = scaler.transform(X_val)
 X_test_scaled = scaler.transform(X_test)
 
-print("✓ Features standardized")
+print("[OK] Features standardized")
 
 # COMMAND ----------
 
@@ -113,18 +179,18 @@ models = {}
 training_times = {}
 
 # Model 1: Linear Regression
-print("🔄 Training Linear Regression...")
+print("Training Linear Regression...")
 start_time = datetime.now()
 lr_model = LinearRegression()
 lr_model.fit(X_train_scaled, y_train)
 models['Linear Regression'] = lr_model
 training_times['Linear Regression'] = (datetime.now() - start_time).total_seconds()
-print(f"✓ Linear Regression trained ({training_times['Linear Regression']:.2f}s)")
+print(f"[OK] Linear Regression trained ({training_times['Linear Regression']:.2f}s)")
 
 # COMMAND ----------
 
 # Model 2: Random Forest
-print("\n🔄 Training Random Forest...")
+print("\nTraining Random Forest...")
 start_time = datetime.now()
 rf_model = RandomForestRegressor(
     n_estimators=100,
@@ -136,12 +202,12 @@ rf_model = RandomForestRegressor(
 rf_model.fit(X_train_scaled, y_train)
 models['Random Forest'] = rf_model
 training_times['Random Forest'] = (datetime.now() - start_time).total_seconds()
-print(f"✓ Random Forest trained ({training_times['Random Forest']:.2f}s)")
+print(f"[OK] Random Forest trained ({training_times['Random Forest']:.2f}s)")
 
 # COMMAND ----------
 
 # Model 3: Gradient Boosting
-print("\n🔄 Training Gradient Boosting...")
+print("\nTraining Gradient Boosting...")
 start_time = datetime.now()
 gb_model = GradientBoostingRegressor(
     n_estimators=100,
@@ -152,9 +218,9 @@ gb_model = GradientBoostingRegressor(
 gb_model.fit(X_train_scaled, y_train)
 models['Gradient Boosting'] = gb_model
 training_times['Gradient Boosting'] = (datetime.now() - start_time).total_seconds()
-print(f"✓ Gradient Boosting trained ({training_times['Gradient Boosting']:.2f}s)")
+print(f"[OK] Gradient Boosting trained ({training_times['Gradient Boosting']:.2f}s)")
 
-print("\n✓ All models trained successfully")
+print("\n[OK] All models trained successfully")
 
 # COMMAND ----------
 
@@ -178,7 +244,7 @@ metrics = {}
 
 print("Validation Set Results:")
 print("-" * 70)
-print(f"{'Model':<20} | {'RMSE':>12} | {'MAE':>12} | {'R² Score':>12}")
+print(f"{'Model':<20} | {'RMSE':>12} | {'MAE':>12} | {'R2 Score':>12}")
 print("-" * 70)
 
 for model_name, model in models.items():
@@ -193,10 +259,10 @@ best_model_name = min(metrics, key=lambda x: metrics[x]['rmse'])
 best_model = models[best_model_name]
 
 print("\n" + "="*70)
-print(f"✓ BEST MODEL: {best_model_name}")
+print(f"\n[OK] BEST MODEL: {best_model_name}")
 print(f"  RMSE: {metrics[best_model_name]['rmse']:.6f}")
 print(f"  MAE:  {metrics[best_model_name]['mae']:.6f}")
-print(f"  R²:   {metrics[best_model_name]['r2']:.6f}")
+print(f"  R2:   {metrics[best_model_name]['r2']:.6f}")
 print("="*70)
 
 # COMMAND ----------
@@ -210,13 +276,13 @@ test_metrics = {}
 for model_name, model in models.items():
     metric = evaluate_model(model, X_test_scaled, y_test, model_name)
     test_metrics[model_name] = metric
-    print(f"{model_name:<20} | RMSE: {metric['rmse']:>12.6f} | R²: {metric['r2']:>12.6f}")
+    print(f"{model_name:<20} | RMSE: {metric['rmse']:>12.6f} | R2: {metric['r2']:>12.6f}")
 
 # COMMAND ----------
 
 # ========== STEP 7: SAVE MODELS ==========
 
-print("\n📁 Saving models...")
+print("\nSaving models...")
 
 saved_models = {}
 for model_name, model in models.items():
@@ -228,7 +294,7 @@ for model_name, model in models.items():
         pickle.dump(model, f)
     
     saved_models[model_name] = file_path
-    print(f"✓ Saved {model_name} to {file_path}")
+    print(f"[OK] Saved {model_name} to {file_path}")
 
 # COMMAND ----------
 
@@ -236,13 +302,13 @@ for model_name, model in models.items():
 scaler_path = os.path.join(MODELS_PATH, f"scaler_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl")
 with open(scaler_path, 'wb') as f:
     pickle.dump(scaler, f)
-print(f"✓ Saved scaler to {scaler_path}")
+print(f"[OK] Saved scaler to {scaler_path}")
 
 # COMMAND ----------
 
 # ========== STEP 8: CREATE PREDICTIONS TABLE ==========
 
-print("\n📊 Creating predictions table...")
+print("\nCreating predictions table...")
 
 # Generate predictions on test set using best model
 y_pred_best = best_model.predict(X_test_scaled)
@@ -255,13 +321,21 @@ pred_df['Prediction_Error'] = np.abs(y_test - y_pred_best)
 pred_df['Model'] = best_model_name
 pred_df['Timestamp'] = datetime.now()
 
-# Save to Delta Lake
-spark_pred_df = spark.createDataFrame(pred_df)
-spark_pred_df.write.mode("overwrite").option("mergeSchema", "true").saveAsTable(
-    f"{DELTA_CATALOG}.stock_predictions"
-)
+# Save predictions
+if spark is not None:
+    # Save to Delta Lake
+    spark_pred_df = spark.createDataFrame(pred_df)
+    spark_pred_df.write.mode("overwrite").option("mergeSchema", "true").saveAsTable(
+        f"{DELTA_CATALOG}.stock_predictions"
+    )
+    print(f"[OK] Saved {len(pred_df)} predictions to Delta Lake table: {DELTA_CATALOG}.stock_predictions")
+else:
+    # Save to local CSV
+    pred_path = os.path.join(DATA_PATH, "stock_predictions.csv")
+    pred_df.to_csv(pred_path, index=False)
+    print(f"[OK] Saved {len(pred_df)} predictions to local CSV: {pred_path}")
 
-print(f"✓ Saved {len(pred_df)} predictions to Delta Lake")
+# End of prediction saving
 
 # COMMAND ----------
 

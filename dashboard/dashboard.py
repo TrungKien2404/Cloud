@@ -12,27 +12,48 @@
 #
 # ====================================================================
 
-
-import subprocess
-import sys
-
-def install_packages():
-    packages = ['streamlit', 'plotly']
-    for package in packages:
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-q', package])
-
-install_packages()
-
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
 import numpy as np
 import logging
+import joblib
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def load_model_with_compatibility(model_path: str):
+    """
+    Load model .pkl with fallback patch for legacy numpy RNG pickles.
+    """
+    def _patch_numpy_compat():
+        # Compatibility shim: some pickles store the class object instead of name.
+        import numpy.random._pickle as np_random_pickle
+
+        original_ctor = np_random_pickle.__bit_generator_ctor
+
+        def _patched_bit_generator_ctor(bit_generator_name="MT19937"):
+            if isinstance(bit_generator_name, type):
+                bit_generator_name = bit_generator_name.__name__
+            elif not isinstance(bit_generator_name, str) and hasattr(bit_generator_name, "__name__"):
+                bit_generator_name = bit_generator_name.__name__
+            return original_ctor(bit_generator_name)
+
+        np_random_pickle.__bit_generator_ctor = _patched_bit_generator_ctor
+
+        # Map numpy 2.x internal module path to numpy 1.x, if model was saved on numpy 2.x.
+        import sys
+        import numpy.core.numeric as np_numeric
+        sys.modules.setdefault("numpy._core.numeric", np_numeric)
+
+    try:
+        return joblib.load(model_path)
+    except Exception:
+        _patch_numpy_compat()
+        return joblib.load(model_path)
 
 # Configure Streamlit page at global scope (MUST be first)
 st.set_page_config(
@@ -490,7 +511,6 @@ class StockDashboard:
 if __name__ == "__main__":
     import os
     import glob
-    import joblib
     
     # Initialize dashboard
     dashboard = StockDashboard()
@@ -498,12 +518,29 @@ if __name__ == "__main__":
     # Render header
     dashboard.render_header()
     
-    data_path = "./data/processed/processed_stock_data.parquet"
-    if not os.path.exists(data_path):
-        data_path = "../data/processed/processed_stock_data.parquet"
+    # Support multiple data locations (notebooks or root)
+    data_paths = [
+        "./notebooks/data/stock_data_processed.csv",
+        "./data/processed/processed_stock_data.parquet",
+        "../notebooks/data/stock_data_processed.csv",
+        "../data/processed/processed_stock_data.parquet"
+    ]
+    
+    data_path = None
+    for p in data_paths:
+        if os.path.exists(p):
+            data_path = p
+            break
+            
+    if not data_path:
+        st.error("Could not find processed data. Please run the ETL pipeline first.")
+        st.stop()
         
     try:
-        df = pd.read_parquet(data_path)
+        if data_path.endswith('.parquet'):
+            df = pd.read_parquet(data_path)
+        else:
+            df = pd.read_csv(data_path)
         
         tickers = df['Ticker'].unique().tolist()
         st.sidebar.title("🎛️ Configurations")
@@ -525,37 +562,67 @@ if __name__ == "__main__":
             
         with tab2:
             st.markdown("### Model Predictions (Target Return)")
-
-            model_dir = "/Workspace/Users/y7prolpvo2018@gmail.com/Cloud/models"
+            model_dirs = ["./notebooks/models", "./models", "../notebooks/models", "../models"]
+            model_dir = None
+            for d in model_dirs:
+                if os.path.exists(d):
+                    model_dir = d
+                    break
+            
+            if not model_dir:
+                st.warning("Models directory not found. Run training pipeline first.")
+                st.stop()
+                
             model_files = glob.glob(os.path.join(model_dir, "*.pkl"))
             if model_files:
+                # Pre-validate models to avoid hard-stop when one pickle is incompatible.
+                loadable_models = {}
+                failed_models = {}
+                for model_path in model_files:
+                    try:
+                        loadable_models[model_path] = load_model_with_compatibility(model_path)
+                    except Exception as e:
+                        failed_models[os.path.basename(model_path)] = str(e)
+
+                if not loadable_models:
+                    st.error("No compatible model could be loaded in the current environment.")
+                    st.info("Try syncing env with training versions (e.g. scikit-learn==1.7.2, numpy==2.x) or retrain models.")
+                    st.stop()
+
                 # Tìm xem có file 'best_model_latest.pkl' không để làm mặc định
                 latest_model_name = "best_model_latest.pkl"
+                selectable_paths = list(loadable_models.keys())
                 default_index = 0
-                for i, f_path in enumerate(model_files):
+                for i, f_path in enumerate(selectable_paths):
                     if os.path.basename(f_path) == latest_model_name:
                         default_index = i
                         break
-                
+
                 selected_model_path = st.selectbox(
-                    "Select Trained Model", 
-                    model_files, 
+                    "Select Trained Model",
+                    selectable_paths,
                     index=default_index,
                     format_func=lambda x: "✨ Best Model (Latest)" if os.path.basename(x) == latest_model_name else os.path.basename(x)
                 )
-                # Load model using joblib (now fully compatible after env sync)
-                try:
-                    model = joblib.load(selected_model_path)
-                except Exception as e:
-                    st.error(f"Error loading model: {e}")
-                    st.stop()
+                model = loadable_models[selected_model_path]
+
+                if failed_models:
+                    st.warning(f"{len(failed_models)} model file(s) were skipped due to compatibility issues.")
+                    with st.expander("Show skipped models and errors"):
+                        for model_name, model_error in failed_models.items():
+                            st.write(f"- {model_name}: {model_error}")
                 
                 # Clean features like in training
-                exclude_cols = ['Ticker', 'FetchDate', 'Target_Price', 'Target_Return']
+                exclude_cols = ['Ticker', 'FetchDate', 'Target_Price', 'Target_Return', 'Target', 'Date']
                 features_cols = [c for c in df_ticker.columns if c not in exclude_cols and pd.api.types.is_numeric_dtype(df_ticker[c])]
                 
+                # Check if we need to filter for specific features used during training
+                # (Assuming the model was trained on the numeric columns available)
                 X = df_ticker[features_cols].fillna(0).values
                 y_pred_return = model.predict(X)
+                
+                # Update target column name for display
+                target_col = 'Target' if 'Target' in df_ticker.columns else ('Target_Return' if 'Target_Return' in df_ticker.columns else None)
                 
                 # ---------------- NEW FEATURE: TOMORROW'S PREDICTION ----------------
                 latest_pred_return = y_pred_return[-1]
@@ -618,7 +685,7 @@ if __name__ == "__main__":
                 # --------------------------------------------------------------------
                 
                 df_pred = pd.DataFrame(index=df_ticker.index)
-                df_pred['Actual'] = df_ticker['Target_Return'] if 'Target_Return' in df_ticker.columns else 0
+                df_pred['Actual'] = df_ticker[target_col] if target_col else 0
                 df_pred['Predicted'] = y_pred_return
                 df_pred['Error'] = np.abs(df_pred['Actual'] - df_pred['Predicted'])
                 
