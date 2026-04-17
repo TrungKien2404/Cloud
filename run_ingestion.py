@@ -1,9 +1,16 @@
+<<<<<<< HEAD
 %pip install yfinance pandas scikit-learn plotly
 %restart_python or dbutils.library.restartPython()
 from ingestion.data_ingestion import StockDataIngestion
 from configs.config import Config
 import os
 import yfinance as yf
+=======
+from ingestion.data_ingestion import StockDataIngestion
+from configs.config import Config
+import os
+
+>>>>>>> 383b956792a3d7dd9cabc8ad4291ac812e1bd434
 # Load config
 config = Config()
 

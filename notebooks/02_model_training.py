@@ -35,7 +35,11 @@ from datetime import datetime
 # ========== CONFIGURATION ==========
 
 DELTA_CATALOG = "bronze"
+<<<<<<< HEAD
 MODELS_PATH = "/Workspace/Users/y7prolpvo2018@gmail.com/Cloud/models"
+=======
+MODELS_PATH = "/dbfs/mnt/models"
+>>>>>>> 383b956792a3d7dd9cabc8ad4291ac812e1bd434
 RANDOM_STATE = 42
 
 # Create models directory if not exists

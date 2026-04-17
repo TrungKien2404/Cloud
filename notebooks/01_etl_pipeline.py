@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # # ====================================================================
 # # DATABRICKS NOTEBOOK - Main ETL Pipeline
 # # ====================================================================
@@ -284,6 +285,8 @@
 
 
 
+=======
+>>>>>>> 383b956792a3d7dd9cabc8ad4291ac812e1bd434
 # ====================================================================
 # DATABRICKS NOTEBOOK - Main ETL Pipeline
 # ====================================================================
@@ -319,6 +322,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+<<<<<<< HEAD
 # ========== SPARK SESSION MANAGEMENT ==========
 
 def get_spark_session():
@@ -355,6 +359,8 @@ def get_spark_session():
 # Refresh session at the start
 spark = get_spark_session()
 
+=======
+>>>>>>> 383b956792a3d7dd9cabc8ad4291ac812e1bd434
 # COMMAND ----------
 
 # ========== CONFIGURATION ==========
@@ -431,6 +437,7 @@ combined_df = pd.concat(stock_data.values(), ignore_index=True)
 print(f"Combined data shape: {combined_df.shape}")
 
 # Convert to Spark DataFrame (for Databricks)
+<<<<<<< HEAD
 # Refresh session before Spark operations to avoid INACTIVITY_TIMEOUT
 spark = get_spark_session()
 
@@ -446,6 +453,17 @@ if spark is not None:
     print("✓ Data saved to Delta Lake table: bronze.stock_data_raw")
 else:
     print("❌ Critical: Spark session is not available. Skipping Delta Lake save.")
+=======
+spark_df = spark.createDataFrame(combined_df)
+
+# Xử lý lỗi SCHEMA_NOT_FOUND: Tạo Database/Schema nếu nó chưa tồn tại trên hệ thống Databricks
+spark.sql(f"CREATE DATABASE IF NOT EXISTS {DELTA_CATALOG}")
+
+# Save to Delta Lake (raw table)
+spark_df.write.mode("overwrite").option("mergeSchema", "true").saveAsTable(f"{DELTA_CATALOG}.stock_data_raw")
+
+print("✓ Data saved to Delta Lake table: bronze.stock_data_raw")
+>>>>>>> 383b956792a3d7dd9cabc8ad4291ac812e1bd434
 
 # COMMAND ----------
 
@@ -547,6 +565,7 @@ print(f"\nColumns: {list(df_features.columns)}")
 # COMMAND ----------
 
 # Save processed data to Delta Lake
+<<<<<<< HEAD
 spark = get_spark_session()
 if spark is not None:
     spark_df_features = spark.createDataFrame(df_features)
@@ -556,6 +575,14 @@ if spark is not None:
     print("✓ Processed data saved to Delta Lake: bronze.stock_data_processed")
 else:
     print("❌ Spark session not available for saving processed data.")
+=======
+spark_df_features = spark.createDataFrame(df_features)
+spark_df_features.write.mode("overwrite").option("mergeSchema", "true").saveAsTable(
+    f"{DELTA_CATALOG}.stock_data_processed"
+)
+
+print("✓ Processed data saved to Delta Lake: bronze.stock_data_processed")
+>>>>>>> 383b956792a3d7dd9cabc8ad4291ac812e1bd434
 
 # COMMAND ----------
 
@@ -584,6 +611,7 @@ print(f"Test:  {len(test_df)} ({len(test_df)/len(df_features)*100:.1f}%)")
 # COMMAND ----------
 
 # Save splits to Delta Lake
+<<<<<<< HEAD
 spark = get_spark_session()
 for split_name, split_df in [("train", train_df), ("val", val_df), ("test", test_df)]:
     if spark is not None:
@@ -594,6 +622,14 @@ for split_name, split_df in [("train", train_df), ("val", val_df), ("test", test
         print(f"✓ Saved {split_name} set to Delta Lake")
     else:
         print(f"❌ Spark session not available for saving {split_name} split.")
+=======
+for split_name, split_df in [("train", train_df), ("val", val_df), ("test", test_df)]:
+    spark_split = spark.createDataFrame(split_df)
+    spark_split.write.mode("overwrite").option("mergeSchema", "true").saveAsTable(
+        f"{DELTA_CATALOG}.stock_data_{split_name}"
+    )
+    print(f"✓ Saved {split_name} set to Delta Lake")
+>>>>>>> 383b956792a3d7dd9cabc8ad4291ac812e1bd434
 
 # COMMAND ----------
 

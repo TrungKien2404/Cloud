@@ -1,9 +1,16 @@
+<<<<<<< HEAD
 
+=======
+>>>>>>> 383b956792a3d7dd9cabc8ad4291ac812e1bd434
 from etl.etl_pipeline import StockETLPipeline
 from configs.config import Config
 import pandas as pd
 import os
+<<<<<<< HEAD
 import yfinance as yf
+=======
+
+>>>>>>> 383b956792a3d7dd9cabc8ad4291ac812e1bd434
 config = Config()
 
 # Tạo thư mục nếu chưa có

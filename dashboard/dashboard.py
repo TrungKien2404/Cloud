@@ -12,6 +12,7 @@
 #
 # ====================================================================
 
+<<<<<<< HEAD
 # Install required packages
 import subprocess
 import sys
@@ -23,6 +24,8 @@ def install_packages():
 
 install_packages()
 
+=======
+>>>>>>> 383b956792a3d7dd9cabc8ad4291ac812e1bd434
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
@@ -525,7 +528,11 @@ if __name__ == "__main__":
             
         with tab2:
             st.markdown("### Model Predictions (Target Return)")
+<<<<<<< HEAD
             model_dir = "/Workspace/Users/y7prolpvo2018@gmail.com/Cloud/models"
+=======
+            model_dir = "./models" if os.path.exists("./models") else "../models"
+>>>>>>> 383b956792a3d7dd9cabc8ad4291ac812e1bd434
             model_files = glob.glob(os.path.join(model_dir, "*.pkl"))
             if model_files:
                 # Tìm xem có file 'best_model_latest.pkl' không để làm mặc định
