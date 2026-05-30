@@ -1,16 +1,17 @@
-<<<<<<< HEAD
-
-=======
->>>>>>> 383b956792a3d7dd9cabc8ad4291ac812e1bd434
 from etl.etl_pipeline import StockETLPipeline
 from configs.config import Config
 import pandas as pd
 import os
-<<<<<<< HEAD
-import yfinance as yf
-=======
+import sys
 
->>>>>>> 383b956792a3d7dd9cabc8ad4291ac812e1bd434
+# Đảm bảo các luồng stdout/stderr trên Windows luôn sử dụng mã hóa UTF-8 để chống lỗi Unicode/charmap
+if sys.platform.startswith('win'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except AttributeError:
+        pass
+
 config = Config()
 
 # Tạo thư mục nếu chưa có

@@ -1,16 +1,16 @@
-<<<<<<< HEAD
-%pip install yfinance pandas scikit-learn plotly
-%restart_python or dbutils.library.restartPython()
 from ingestion.data_ingestion import StockDataIngestion
 from configs.config import Config
 import os
-import yfinance as yf
-=======
-from ingestion.data_ingestion import StockDataIngestion
-from configs.config import Config
-import os
+import sys
 
->>>>>>> 383b956792a3d7dd9cabc8ad4291ac812e1bd434
+# Đảm bảo các luồng stdout/stderr trên Windows luôn sử dụng mã hóa UTF-8 để chống lỗi Unicode/charmap
+if sys.platform.startswith('win'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except AttributeError:
+        pass
+
 # Load config
 config = Config()
 

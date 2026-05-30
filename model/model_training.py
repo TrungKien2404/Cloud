@@ -23,12 +23,23 @@ import pandas as pd
 from typing import Dict, Tuple, Optional
 import joblib
 import os
+import sys
 from datetime import datetime
+
+# Đảm bảo các luồng stdout/stderr trên Windows luôn sử dụng mã hóa UTF-8 để chống lỗi Unicode/charmap
+if sys.platform.startswith('win'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except AttributeError:
+        pass
 
 # ML Libraries
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+import xgboost as xgb
+import lightgbm as lgb
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +114,27 @@ class StockModelTrainer:
             subsample=0.8,           # Fraction của samples cho training
             random_state=42,         # Reproducibility
             verbose=0
+        )
+        
+        # Model 4: XGBoost Regressor
+        # Cực hạn Gradient Boosting, song song hóa tốt, hiệu năng cao
+        self.models['XGBoost'] = xgb.XGBRegressor(
+            n_estimators=100,
+            max_depth=5,
+            learning_rate=0.1,
+            random_state=42,
+            n_jobs=-1
+        )
+        
+        # Model 5: LightGBM Regressor
+        # Tối ưu hóa bộ nhớ và tốc độ huấn luyện theo biểu đồ cột
+        self.models['LightGBM'] = lgb.LGBMRegressor(
+            n_estimators=100,
+            max_depth=5,
+            learning_rate=0.1,
+            random_state=42,
+            n_jobs=-1,
+            verbose=-1
         )
         
         logger.info(f"Initialized {len(self.models)} models: {list(self.models.keys())}")
@@ -310,7 +342,7 @@ class StockModelTrainer:
             print(f"{model_name:<20} | {metrics['rmse']:>12.6f} | {metrics['mae']:>12.6f} | {metrics['r2']:>12.6f}")
         
         print("=" * 80)
-        print(f"✓ Best Model: {self.best_model_name} (lowest RMSE)")
+        print(f"-> Best Model: {self.best_model_name} (lowest RMSE)")
         print("=" * 80 + "\n")
     
     # ========== PREDICTION ==========
@@ -401,6 +433,43 @@ class StockModelTrainer:
             logger.error(f"Error saving best model as latest: {str(e)}")
             raise
     
+    def save_best_model_for_ticker(self, ticker: str, scaler = None, feature_columns = None) -> str:
+        """
+        Lưu mô hình tốt nhất cho từng mã cổ phiếu cụ thể.
+        Gói chung model, scaler, features và metrics vào 1 file để dễ sử dụng.
+        
+        Args:
+            ticker: Mã cổ phiếu
+            scaler: StandardScaler đã fit
+            feature_columns: Danh sách features
+            
+        Returns:
+            File path của ticker best model
+        """
+        if self.best_model is None:
+            raise ValueError("No best model selected")
+            
+        try:
+            ticker_lower = ticker.lower()
+            file_path = os.path.join(self.model_save_path, f"{ticker_lower}_best_model.pkl")
+            
+            # Đóng gói toàn bộ thông tin
+            payload = {
+                'model_name': self.best_model_name,
+                'model': self.best_model,
+                'scaler': scaler,
+                'feature_columns': feature_columns,
+                'metrics': self.model_metrics.get(self.best_model_name, {}),
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            joblib.dump(payload, file_path)
+            logger.info(f"Ticker model for '{ticker}' saved to {file_path}")
+            return file_path
+        except Exception as e:
+            logger.error(f"Error saving model for ticker {ticker}: {str(e)}")
+            raise
+
     def save_all_models(self) -> Dict[str, str]:
         """
         Lưu tất cả trained models
