@@ -1,15 +1,15 @@
 # ====================================================================
-# Dashboard Module - Interactive Visualization
+# Streamlit Web Frontend - Stock Prediction Platform v2.0
 # ====================================================================
 # Module: dashboard/dashboard.py
 #
-# Mục đích: Tạo interactive dashboard sử dụng Streamlit & Plotly
-# - Hiển thị giá thực tế vs dự đoán
-# - Multi-stock comparison
-# - Technical indicators visualization
-# - Model performance metrics
-# - Real-time updates
+# Giao diện Premium kết nối FastAPI Backend.
+# Giai đoạn 1: Chọn thị trường, chọn mã, vẽ biểu đồ, train model
+# Giai đoạn 2: So sánh nhiều mã, heatmap return, top tăng/giảm, watchlist
+# Giai đoạn 3: Chỉ làm frontend, gọi API lấy data/predict/train
+# Giai đoạn 4: Lưu model theo mã, auto-update, Docker
 #
+# Khởi chạy: streamlit run dashboard/dashboard.py
 # ====================================================================
 
 import streamlit as st
@@ -17,706 +17,570 @@ import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
 import numpy as np
-import logging
-import joblib
-from datetime import datetime, timedelta
-from typing import Dict, Optional
+import requests
+import os
+from datetime import datetime
 
-logger = logging.getLogger(__name__)
+# ── Cấu hình URL Backend ─────────────────────────────────────────────
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
-
-def load_model_with_compatibility(model_path: str):
-    """
-    Load model .pkl with fallback patch for legacy numpy RNG pickles.
-    """
-    def _patch_numpy_compat():
-        # Compatibility shim: some pickles store the class object instead of name.
-        import numpy.random._pickle as np_random_pickle
-
-        original_ctor = np_random_pickle.__bit_generator_ctor
-
-        def _patched_bit_generator_ctor(bit_generator_name="MT19937"):
-            if isinstance(bit_generator_name, type):
-                bit_generator_name = bit_generator_name.__name__
-            elif not isinstance(bit_generator_name, str) and hasattr(bit_generator_name, "__name__"):
-                bit_generator_name = bit_generator_name.__name__
-            return original_ctor(bit_generator_name)
-
-        np_random_pickle.__bit_generator_ctor = _patched_bit_generator_ctor
-
-        # Map numpy 2.x internal module path to numpy 1.x, if model was saved on numpy 2.x.
-        import sys
-        import numpy.core.numeric as np_numeric
-        sys.modules.setdefault("numpy._core.numeric", np_numeric)
-
-    try:
-        return joblib.load(model_path)
-    except Exception:
-        _patch_numpy_compat()
-        return joblib.load(model_path)
-
-# Configure Streamlit page at global scope (MUST be first)
+# ── Phải là lệnh đầu tiên trong script ───────────────────────────────
 st.set_page_config(
-    page_title="Stock Price Prediction Dashboard",
+    page_title="Stock AI – Dự báo Giá Cổ phiếu",
+    page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-class StockDashboard:
-    """
-    Interactive dashboard cho stock prediction system
-    
-    Features:
-        - Price history visualization
-        - Prediction vs Actual comparison
-        - Technical indicators (MA, RSI)
-        - Multi-stock analysis
-        - Model performance metrics
-    """
-    
-    def __init__(self, page_title: str = "Stock Price Prediction Dashboard"):
-        """
-        Khởi tạo Dashboard
-        
-        Args:
-            page_title: Title của Streamlit page
-        """
-        self.page_title = page_title
-        self._configure_streamlit()
-    
-    def _configure_streamlit(self) -> None:
-        """Cấu hình Streamlit settings"""
-        pass
-        
-        # Custom CSS
-        st.markdown("""
-            <style>
-                .main {background-color: #f5f5f5;}
-                .metric-card {
-                    background-color: white;
-                    padding: 20px;
-                    border-radius: 10px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }
-            </style>
-        """, unsafe_allow_html=True)
-    
-    # ========== PAGE HEADER ==========
-    
-    def render_header(self) -> None:
-        """Render main header"""
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            st.title("📈 Stock Price Prediction Dashboard")
-            st.markdown("---")
-        
-        with col2:
-            st.metric("Last Updated", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    
-    # ========== PRICE ANALYSIS ==========
-    
-    def plot_price_history(
-        self,
-        df: pd.DataFrame,
-        ticker: str,
-        ma_columns: list = None
-    ) -> go.Figure:
-        """
-        Plot giá history với moving averages
-        
-        Args:
-            df: DataFrame chứa dữ liệu
-            ticker: Mã cổ phiếu
-            ma_columns: Danh sách MA columns (e.g., ['MA10', 'MA20'])
-            
-        Returns:
-            Plotly Figure
-        """
-        fig = go.Figure()
-        
-        # Add closing price
-        fig.add_trace(go.Scatter(
-            x=df.index,
-            y=df['Close'],
-            name='Closing Price',
-            mode='lines',
-            line=dict(color='blue', width=2)
-        ))
-        
-        # Add moving averages
-        if ma_columns:
-            colors = ['orange', 'red', 'green']
-            for i, ma_col in enumerate(ma_columns):
-                if ma_col in df.columns:
-                    fig.add_trace(go.Scatter(
-                        x=df.index,
-                        y=df[ma_col],
-                        name=ma_col,
-                        mode='lines',
-                        line=dict(color=colors[i % len(colors)], width=1, dash='dash')
-                    ))
-        
-        # Update layout
-        fig.update_layout(
-            title=f"{ticker} - Price History with Moving Averages",
-            xaxis_title="Date",
-            yaxis_title="Price (USD)",
-            hovermode='x unified',
-            height=500
-        )
-        
-        return fig
-    
-    def plot_prediction_vs_actual(
-        self,
-        df_pred: pd.DataFrame,
-        ticker: str
-    ) -> go.Figure:
-        """
-        Plot predicted vs actual prices
-        
-        Args:
-            df_pred: DataFrame với Actual, Predicted columns
-            ticker: Mã cổ phiếu
-            
-        Returns:
-            Plotly Figure
-        """
-        fig = go.Figure()
-        
-        # Add actual prices
-        fig.add_trace(go.Scatter(
-            x=df_pred.index,
-            y=df_pred['Actual'],
-            name='Actual Price',
-            mode='lines',
-            line=dict(color='blue', width=2)
-        ))
-        
-        # Add predicted prices
-        fig.add_trace(go.Scatter(
-            x=df_pred.index,
-            y=df_pred['Predicted'],
-            name='Predicted Price',
-            mode='lines+markers',
-            line=dict(color='red', width=2),
-            marker=dict(size=4)
-        ))
-        
-        # Update layout
-        fig.update_layout(
-            title=f"{ticker} - Prediction vs Actual",
-            xaxis_title="Date",
-            yaxis_title="Price (USD)",
-            hovermode='x unified',
-            height=500
-        )
-        
-        return fig
-    
-    def plot_prediction_error(self, df_pred: pd.DataFrame) -> go.Figure:
-        """
-        Plot prediction error over time
-        
-        Args:
-            df_pred: DataFrame với Error column
-            
-        Returns:
-            Plotly Figure
-        """
-        fig = go.Figure()
-        
-        # Add error bars
-        fig.add_trace(go.Bar(
-            x=df_pred.index,
-            y=df_pred['Error'],
-            name='Absolute Error',
-            marker=dict(color='indianred')
-        ))
-        
-        # Add mean error line
-        mean_error = df_pred['Error'].mean()
-        fig.add_hline(
-            y=mean_error,
-            annotation_text=f"Mean Error: ${mean_error:.2f}",
-            line_dash="dash",
-            line_color="green"
-        )
-        
-        fig.update_layout(
-            title="Prediction Error Over Time",
-            xaxis_title="Date",
-            yaxis_title="Absolute Error ($)",
-            height=400
-        )
-        
-        return fig
-    
-    # ========== TECHNICAL INDICATORS ==========
-    
-    def plot_rsi(self, df: pd.DataFrame, ticker: str) -> go.Figure:
-        """
-        Plot RSI indicator
-        
-        Args:
-            df: DataFrame chứa RSI column
-            ticker: Mã cổ phiếu
-            
-        Returns:
-            Plotly Figure
-        """
-        fig = go.Figure()
-        
-        if 'RSI' not in df.columns:
-            st.warning("RSI data not available")
-            return fig
-        
-        # Add RSI line
-        fig.add_trace(go.Scatter(
-            x=df.index,
-            y=df['RSI'],
-            name='RSI(14)',
-            mode='lines',
-            line=dict(color='purple', width=2)
-        ))
-        
-        # Add overbought/oversold zones
-        fig.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought (70)")
-        fig.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold (30)")
-        
-        fig.update_layout(
-            title=f"{ticker} - RSI (Relative Strength Index)",
-            xaxis_title="Date",
-            yaxis_title="RSI",
-            hovermode='x unified',
-            height=400,
-            yaxis=dict(range=[0, 100])
-        )
-        
-        return fig
-    
-    def plot_volatility(self, df: pd.DataFrame, ticker: str) -> go.Figure:
-        """
-        Plot volatility over time
-        
-        Args:
-            df: DataFrame chứa Volatility column
-            ticker: Mã cổ phiếu
-            
-        Returns:
-            Plotly Figure
-        """
-        fig = go.Figure()
-        
-        if 'Volatility' not in df.columns:
-            st.warning("Volatility data not available")
-            return fig
-        
-        fig.add_trace(go.Scatter(
-            x=df.index,
-            y=df['Volatility'],
-            name='Volatility (20-day)',
-            mode='lines',
-            fill='tozeroy',
-            line=dict(color='orange', width=2)
-        ))
-        
-        fig.update_layout(
-            title=f"{ticker} - Price Volatility",
-            xaxis_title="Date",
-            yaxis_title="Volatility",
-            hovermode='x unified',
-            height=400
-        )
-        
-        return fig
-    
-    # ========== MULTI-STOCK COMPARISON ==========
-    
-    def plot_multiple_stocks(
-        self,
-        stock_data: Dict[str, pd.DataFrame]
-    ) -> go.Figure:
-        """
-        Plot normalized prices của multiple stocks
-        
-        Args:
-            stock_data: Dictionary mapping ticker -> DataFrame
-            
-        Returns:
-            Plotly Figure
-        """
-        fig = go.Figure()
-        
-        colors = px.colors.qualitative.Set2
-        
-        for i, (ticker, df) in enumerate(stock_data.items()):
-            # Normalize prices to start at 100
-            normalized = (df['Close'] / df['Close'].iloc[0]) * 100
-            
-            fig.add_trace(go.Scatter(
-                x=normalized.index,
-                y=normalized,
-                name=ticker,
-                mode='lines',
-                line=dict(color=colors[i % len(colors)], width=2)
-            ))
-        
-        fig.update_layout(
-            title="Multi-Stock Price Comparison (Normalized to 100)",
-            xaxis_title="Date",
-            yaxis_title="Indexed Price",
-            hovermode='x unified',
-            height=500
-        )
-        
-        return fig
-    
-    # ========== MODEL METRICS ==========
-    
-    def display_model_metrics(self, metrics: Dict[str, Dict]) -> None:
-        """
-        Display model performance metrics
-        
-        Args:
-            metrics: Dictionary mapping model_name -> {rmse, mae, r2}
-        """
-        st.subheader("📊 Model Performance Comparison")
-        
-        # Create comparison dataframe
-        comparison_data = []
-        for model_name, model_metrics in metrics.items():
-            comparison_data.append({
-                'Model': model_name,
-                'RMSE': model_metrics['rmse'],
-                'MAE': model_metrics['mae'],
-                'R² Score': model_metrics['r2']
-            })
-        
-        df_comparison = pd.DataFrame(comparison_data)
-        
-        # Display metrics
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("Best RMSE", f"${df_comparison['RMSE'].min():.4f}")
-        with col2:
-            st.metric("Best MAE", f"${df_comparison['MAE'].min():.4f}")
-        with col3:
-            st.metric("Best R² Score", f"{df_comparison['R² Score'].max():.4f}")
-        
-        # Display table
-        st.dataframe(df_comparison, width='stretch')
-    
-    def plot_metrics_comparison(self, metrics: Dict[str, Dict]) -> None:
-        """
-        Plot metrics comparison chart
-        
-        Args:
-            metrics: Dictionary mapping model_name -> {rmse, mae, r2}
-        """
-        comparison_data = []
-        for model_name, model_metrics in metrics.items():
-            comparison_data.append({
-                'Model': model_name,
-                'RMSE': model_metrics['rmse'],
-                'MAE': model_metrics['mae'],
-                'R² Score': model_metrics['r2']
-            })
-        
-        df_comp = pd.DataFrame(comparison_data)
-        
-        # Plot RMSE comparison
-        fig1 = px.bar(df_comp, x='Model', y='RMSE', title='RMSE Comparison (Lower is Better)',
-                     color='RMSE', color_continuous_scale='Reds')
-        
-        # Plot MAE comparison
-        fig2 = px.bar(df_comp, x='Model', y='MAE', title='MAE Comparison (Lower is Better)',
-                     color='MAE', color_continuous_scale='Oranges')
-        
-        # Plot R² Score comparison
-        fig3 = px.bar(df_comp, x='Model', y='R² Score', title='R² Score Comparison (Higher is Better)',
-                     color='R² Score', color_continuous_scale='Greens')
-        
-        st.plotly_chart(fig1, width='stretch')
-        st.plotly_chart(fig2, width='stretch')
-        st.plotly_chart(fig3, width='stretch')
-    
-    # ========== CORRELATION HEATMAP ==========
-    
-    def plot_correlation_heatmap(self, df: pd.DataFrame) -> None:
-        """
-        Plot correlation heatmap của features
-        
-        Args:
-            df: DataFrame với numeric columns
-        """
-        # Select numeric columns
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        
-        if len(numeric_cols) > 1:
-            # Calculate correlation
-            corr_matrix = df[numeric_cols].corr()
-            
-            # Plot heatmap
-            fig = px.imshow(
-                corr_matrix,
-                labels=dict(color="Correlation"),
-                x=corr_matrix.columns,
-                y=corr_matrix.columns,
-                color_continuous_scale="RdBu",
-                zmin=-1,
-                zmax=1,
-                height=600,
-                width=600
-            )
-            
-            fig.update_layout(title="Feature Correlation Heatmap")
-            st.plotly_chart(fig, width='stretch')
-    
-    # ========== STATISTICS PANEL ==========
-    
-    def display_statistics(self, df: pd.DataFrame) -> None:
-        """
-        Display data statistics
-        
-        Args:
-            df: DataFrame
-        """
-        st.subheader("📈 Data Statistics")
-        
-        col1, col2, col3, col4, col5 = st.columns(5)
-        
-        with col1:
-            st.metric("Latest Close", f"${df['Close'].iloc[-1]:.2f}")
-        
-        with col2:
-            st.metric("52-Week High", f"${df['Close'].max():.2f}")
-        
-        with col3:
-            st.metric("52-Week Low", f"${df['Close'].min():.2f}")
-        
-        with col4:
-            avg_return = df['Daily_Return'].mean() * 100 if 'Daily_Return' in df.columns else 0
-            st.metric("Avg Daily Return", f"{avg_return:.2f}%")
-        
-        with col5:
-            volatility = df['Daily_Return'].std() * 100 if 'Daily_Return' in df.columns else 0
-            st.metric("Volatility", f"{volatility:.2f}%")
+# ── Custom Premium CSS ────────────────────────────────────────────────
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+
+html, body, [class*="css"] { font-family: 'Outfit', sans-serif; }
+
+/* Dark gradient background */
+.stApp {
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+}
+
+/* Cards */
+.glass-card {
+    background: rgba(30, 41, 59, 0.75);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    padding: 22px 26px;
+    border-radius: 16px;
+    backdrop-filter: blur(12px);
+    margin-bottom: 18px;
+    transition: transform .2s, border-color .2s;
+}
+.glass-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(148, 163, 184, 0.35);
+}
+
+/* Metric heading */
+.metric-label { color: #94a3b8; font-size: 13px; font-weight: 600; margin: 0; }
+.metric-value { color: #f1f5f9; font-size: 30px; font-weight: 800; margin: 4px 0 0 0; }
+.metric-value.green  { color: #22c55e !important; }
+.metric-value.red    { color: #ef4444 !important; }
+.metric-value.yellow { color: #f59e0b !important; }
+.metric-value.blue   { color: #38bdf8 !important; }
+
+/* Section headings */
+h1, h2, h3 { color: #f1f5f9 !important; font-weight: 800 !important; }
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background: rgba(15,23,42,0.95);
+    border-right: 1px solid rgba(148,163,184,0.12);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0f172a; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+
+/* Reco box shadow */
+.reco-box {
+    padding: 24px;
+    border-radius: 16px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+</style>
+""", unsafe_allow_html=True)
 
 
-# ========== MAIN EXECUTION ==========
+# ═══════════════════════════════════════════════════════════════════════
+#  HELPER: GỌI API
+# ═══════════════════════════════════════════════════════════════════════
 
-if __name__ == "__main__":
-    import os
-    import glob
-    
-    # Initialize dashboard
-    dashboard = StockDashboard()
-    
-    # Render header
-    dashboard.render_header()
-    
-    # Support multiple data locations (notebooks or root)
-    data_paths = [
-        "./notebooks/data/stock_data_processed.csv",
-        "./data/processed/processed_stock_data.parquet",
-        "../notebooks/data/stock_data_processed.csv",
-        "../data/processed/processed_stock_data.parquet"
-    ]
-    
-    data_path = None
-    for p in data_paths:
-        if os.path.exists(p):
-            data_path = p
-            break
-            
-    if not data_path:
-        st.error("Could not find processed data. Please run the ETL pipeline first.")
-        st.stop()
-        
+@st.cache_data(ttl=30)
+def api_tickers():
     try:
-        if data_path.endswith('.parquet'):
-            df = pd.read_parquet(data_path)
-        else:
-            df = pd.read_csv(data_path)
-        
-        tickers = df['Ticker'].unique().tolist()
-        st.sidebar.title("🎛️ Configurations")
-        selected_ticker = st.sidebar.selectbox("Select Stock", tickers)
-        
-        # Prepare Data for Ticker
-        df_ticker = df[df['Ticker'] == selected_ticker].copy()
-        if 'Date' in df_ticker.columns:
-            df_ticker['Date'] = pd.to_datetime(df_ticker['Date'])
-            df_ticker.set_index('Date', inplace=True)
-            
-        dashboard.display_statistics(df_ticker)
-        
-        # Create Tabs
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📈 Price Analysis", "🎯 Predictions", "📊 Technical Indicators", "🔗 Multi-Stock", "🧩 Correlations"])
-        
-        with tab1:
-            st.plotly_chart(dashboard.plot_price_history(df_ticker, selected_ticker, ['MA10', 'MA20', 'MA50']), width='stretch')
-            
-        with tab2:
-            st.markdown("### Model Predictions (Target Return)")
-            model_dirs = ["./notebooks/models", "./models", "../notebooks/models", "../models"]
-            model_dir = None
-            for d in model_dirs:
-                if os.path.exists(d):
-                    model_dir = d
-                    break
-            
-            if not model_dir:
-                st.warning("Models directory not found. Run training pipeline first.")
-                st.stop()
-                
-            model_files = glob.glob(os.path.join(model_dir, "*.pkl"))
-            if model_files:
-                # Pre-validate models to avoid hard-stop when one pickle is incompatible.
-                loadable_models = {}
-                failed_models = {}
-                for model_path in model_files:
-                    try:
-                        loadable_models[model_path] = load_model_with_compatibility(model_path)
-                    except Exception as e:
-                        failed_models[os.path.basename(model_path)] = str(e)
+        r = requests.get(f"{BACKEND_URL}/api/tickers", timeout=5)
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        st.sidebar.error(f"⚠️ Không kết nối được Backend!\n\n`{e}`")
+    return {"US": ["AAPL", "TSLA", "MSFT", "AMZN", "GOOGL"],
+            "VN": ["FPT.VN", "HPG.VN", "VNM.VN", "VIC.VN", "TCB.VN"]}
 
-                if not loadable_models:
-                    st.error("No compatible model could be loaded in the current environment.")
-                    st.info("Try syncing env with training versions (e.g. scikit-learn==1.7.2, numpy==2.x) or retrain models.")
-                    st.stop()
 
-                # Tìm xem có file 'best_model_latest.pkl' không để làm mặc định
-                latest_model_name = "best_model_latest.pkl"
-                selectable_paths = list(loadable_models.keys())
-                default_index = 0
-                for i, f_path in enumerate(selectable_paths):
-                    if os.path.basename(f_path) == latest_model_name:
-                        default_index = i
-                        break
+@st.cache_data(ttl=20, show_spinner=False)
+def api_historical(ticker: str, days: int = 150):
+    try:
+        r = requests.get(f"{BACKEND_URL}/api/data/{ticker}?days={days}", timeout=8)
+        if r.status_code == 200:
+            return pd.DataFrame(r.json())
+    except Exception:
+        pass
+    return pd.DataFrame()
 
-                selected_model_path = st.selectbox(
-                    "Select Trained Model",
-                    selectable_paths,
-                    index=default_index,
-                    format_func=lambda x: "✨ Best Model (Latest)" if os.path.basename(x) == latest_model_name else os.path.basename(x)
+
+@st.cache_data(ttl=15, show_spinner=False)
+def api_predict(ticker: str):
+    try:
+        r = requests.get(f"{BACKEND_URL}/api/predict/{ticker}", timeout=8)
+        if r.status_code == 200:
+            return r.json(), None
+        return None, r.json().get("detail", "Lỗi không xác định")
+    except Exception as e:
+        return None, str(e)
+
+
+@st.cache_data(ttl=20, show_spinner=False)
+def api_market_summary():
+    try:
+        r = requests.get(f"{BACKEND_URL}/api/market-summary", timeout=12)
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        pass
+    return {}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  HEADER
+# ═══════════════════════════════════════════════════════════════════════
+
+col_h1, col_h2 = st.columns([5, 1])
+with col_h1:
+    st.markdown("""
+    <h1 style='margin-bottom:0'>📈 Stock AI — Hệ thống Dự báo Giá Cổ phiếu</h1>
+    <p style='color:#94a3b8; margin-top:4px'>
+        Phân tích kỹ thuật & Trí tuệ nhân tạo cho thị trường <b>Mỹ</b> 🇺🇸 và <b>Việt Nam</b> 🇻🇳
+    </p>
+    """, unsafe_allow_html=True)
+with col_h2:
+    now_str = datetime.now().strftime("%H:%M:%S — %d/%m/%Y")
+    st.markdown(f"""
+    <div style='text-align:right; padding-top:14px;'>
+        <code style='background:rgba(30,41,59,0.8); padding:6px 12px;
+        border-radius:8px; border:1px solid rgba(255,255,255,0.1); font-size:12px'>
+        🕐 {now_str}
+        </code>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("---")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  SIDEBAR
+# ═══════════════════════════════════════════════════════════════════════
+
+st.sidebar.markdown("<h2 style='text-align:center'>🎛️ Bảng Điều Khiển</h2>", unsafe_allow_html=True)
+
+tickers_data = api_tickers()
+
+# 1. Chọn thị trường
+market = st.sidebar.selectbox(
+    "1️⃣  Chọn Thị Trường",
+    ["🇺🇸 Mỹ (US)", "🇻🇳 Việt Nam (VN)"]
+)
+ticker_list = tickers_data.get("US") if "Mỹ" in market else tickers_data.get("VN")
+ticker_list = ticker_list or []
+
+# 2. Chọn mã
+default_idx = 0
+selected_ticker = st.sidebar.selectbox("2️⃣  Chọn Mã Chứng Khoán", ticker_list, index=default_idx)
+
+# 3. Chế độ xem
+view = st.sidebar.radio(
+    "3️⃣  Chế Độ Hiển Thị",
+    ["📈 Phân Tích & AI Dự Báo", "🔗 Thị Trường & So Sánh"]
+)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### ⚡ Hành Động Nhanh")
+
+# Nút train model
+if st.sidebar.button(f"🤖 Train Model AI cho **{selected_ticker}**", use_container_width=True):
+    with st.sidebar.spinner("Đang cào dữ liệu & huấn luyện AI…"):
+        try:
+            r = requests.post(f"{BACKEND_URL}/api/train/{selected_ticker}", timeout=120)
+            if r.status_code == 200:
+                res = r.json()
+                st.sidebar.success(
+                    f"✅ Huấn luyện xong!\n"
+                    f"Thuật toán: **{res['best_model']}**\n"
+                    f"RMSE: `{res['test_rmse']:.5f}`"
                 )
-                model = loadable_models[selected_model_path]
+                st.cache_data.clear()
+            else:
+                st.sidebar.error(f"❌ Lỗi: {r.text[:200]}")
+        except Exception as e:
+            st.sidebar.error(f"❌ Không kết nối API: {e}")
 
-                if failed_models:
-                    st.warning(f"{len(failed_models)} model file(s) were skipped due to compatibility issues.")
-                    with st.expander("Show skipped models and errors"):
-                        for model_name, model_error in failed_models.items():
-                            st.write(f"- {model_name}: {model_error}")
-                
-                # Clean features like in training
-                exclude_cols = ['Ticker', 'FetchDate', 'Target_Price', 'Target_Return', 'Target', 'Date']
-                features_cols = [c for c in df_ticker.columns if c not in exclude_cols and pd.api.types.is_numeric_dtype(df_ticker[c])]
-                
-                # Check if we need to filter for specific features used during training
-                # (Assuming the model was trained on the numeric columns available)
-                X = df_ticker[features_cols].fillna(0).values
-                y_pred_return = model.predict(X)
-                
-                # Update target column name for display
-                target_col = 'Target' if 'Target' in df_ticker.columns else ('Target_Return' if 'Target_Return' in df_ticker.columns else None)
-                
-                # ---------------- NEW FEATURE: TOMORROW'S PREDICTION ----------------
-                latest_pred_return = y_pred_return[-1]
-                latest_close = df_ticker['Close'].iloc[-1]
-                latest_date = df_ticker.index[-1]
-                
-                # Predict next valid business day
-                next_day = latest_date + timedelta(days=1)
-                # Skip weekends to find next trading day
-                while next_day.weekday() >= 5:  # 5=Saturday, 6=Sunday
-                    next_day += timedelta(days=1)
-                
-                predicted_next_close = latest_close * (1 + latest_pred_return)
-                price_change = predicted_next_close - latest_close
-                
-                # AI Recommendation Logic
-                if latest_pred_return >= 0.01:
-                    reco_status = "🟢 STRONG BUY"
-                    reco_desc = "Mô hình dự đoán cổ phiếu sẽ tăng trưởng tốt (>1%). Khuyến nghị giải ngân."
-                    box_color = "#e6ffe6"
-                    text_color = "green"
-                elif 0 <= latest_pred_return < 0.01:
-                    reco_status = "🟡 HOLD / BUY"
-                    reco_desc = "Tăng trưởng nhẹ (<1%). Có thể giữ để quan sát hoặc mua thăm dò."
-                    box_color = "#ffffe6"
-                    text_color = "#b3b300"
-                elif -0.01 < latest_pred_return < 0:
-                    reco_status = "🟠 HOLD / SELL"
-                    reco_desc = "Dự kiến giảm nhẹ. Cần theo dõi thêm hoặc hạ tỷ trọng."
-                    box_color = "#fff0e6"
-                    text_color = "#ff8000"
-                else:
-                    reco_status = "🔴 STRONG SELL"
-                    reco_desc = "Cảnh báo giảm mạnh (âm >1%). Ưu tiên chốt lời/cắt lỗ bảo toàn vốn."
-                    box_color = "#ffe6e6"
-                    text_color = "red"
-                
-                st.markdown(f"###  Phân Tích & Khuyến Nghị Trực Tiếp Cho Ngày Tiếp Theo: {next_day.strftime('%d/%m/%Y')}")
-                st.markdown(f"""
-                <div style="background-color: {box_color}; padding: 20px; border-radius: 10px; margin-bottom: 25px; border-left: 5px solid {text_color};">
-                    <h2 style="color: {text_color}; margin-top: 0;">{reco_status}</h2>
-                    <p style="font-size: 16px;">{reco_desc}</p>
-                    <div style="display: flex; justify-content: space-between; margin-top: 20px; flex-wrap: wrap;">
-                        <div style="margin-right: 20px;">
-                            <p style="margin: 0; color: #555;">Chốt Phiên Trước ({latest_date.strftime('%d/%m/%Y')}):</p>
-                            <h3 style="margin: 0;">${latest_close:.2f}</h3>
-                        </div>
-                        <div style="margin-right: 20px;">
-                            <p style="margin: 0; color: #555;">Giá Dự Đoán Mới ({next_day.strftime('%d/%m/%Y')}):</p>
-                            <h3 style="margin: 0; color: {text_color};">${predicted_next_close:.2f} </h3>
-                        </div>
-                        <div>
-                            <p style="margin: 0; color: #555;">Biến Động Dự Kiến:</p>
-                            <h3 style="margin: 0; color: {text_color};">${price_change:+.2f} ({latest_pred_return*100:+.2f}%)</h3>
-                        </div>
+# Nút cập nhật toàn hệ thống
+if st.sidebar.button("🔄 Cập nhật dữ liệu toàn hệ thống", use_container_width=True):
+    try:
+        r = requests.post(f"{BACKEND_URL}/api/update-data", timeout=5)
+        if r.status_code == 200:
+            st.sidebar.info("📡 Đã kích hoạt cập nhật ngầm. Hoàn tất sau ~60 giây.")
+    except Exception as e:
+        st.sidebar.error(f"❌ {e}")
+
+st.sidebar.markdown("""
+<br>
+<div style='text-align:center;color:#475569;font-size:11px'>
+    Stock AI Platform v2.0<br>
+    FastAPI + Streamlit + ML
+</div>
+""", unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  VIEW 1: PHÂN TÍCH & AI DỰ BÁO
+# ═══════════════════════════════════════════════════════════════════════
+
+if view == "📈 Phân Tích & AI Dự Báo":
+
+    with st.spinner(f"Đang tải dữ liệu {selected_ticker}…"):
+        df = api_historical(selected_ticker, days=150)
+
+    if df.empty:
+        st.warning(
+            f"⚠️ Không có dữ liệu cho **{selected_ticker}**. "
+            "Vui lòng nhấn **'Train Model AI'** ở thanh bên để tải dữ liệu."
+        )
+        st.stop()
+
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values("date").set_index("date")
+
+    last = df.iloc[-1]
+    daily_chg = float(last.get("daily_return", 0)) * 100
+    vol = float(last.get("volatility", 0)) * 100
+    rsi_val = float(last.get("rsi", 50))
+
+    # ── Metric Cards ─────────────────────────────────────────────────
+    c1, c2, c3, c4 = st.columns(4)
+
+    def metric_card(col, label, value_html, extra=""):
+        col.markdown(f"""
+        <div class='glass-card'>
+            <p class='metric-label'>{label}</p>
+            <p class='metric-value {extra}'>{value_html}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    metric_card(c1, "Giá Chốt Phiên", f"${float(last['close']):,.2f}")
+    chg_cls = "green" if daily_chg >= 0 else "red"
+    chg_arrow = "▲" if daily_chg >= 0 else "▼"
+    metric_card(c2, "Biến Động 24h", f"{chg_arrow} {daily_chg:+.2f}%", chg_cls)
+    metric_card(c3, "Dao Động (Volatility)", f"{vol:.2f}%", "yellow")
+    rsi_cls = "red" if rsi_val >= 70 else ("green" if rsi_val <= 30 else "blue")
+    metric_card(c4, "Chỉ Báo RSI(14)", f"{rsi_val:.1f}", rsi_cls)
+
+    # ── Biểu đồ giá ─────────────────────────────────────────────────
+    st.subheader(f"📊 Phân Tích Kỹ Thuật — {selected_ticker}")
+
+    ma_col1, ma_col2, ma_col3 = st.columns(3)
+    show_ma10 = ma_col1.checkbox("MA10", value=True)
+    show_ma20 = ma_col2.checkbox("MA20", value=True)
+    show_ma50 = ma_col3.checkbox("MA50", value=False)
+
+    fig = go.Figure()
+    fig.add_trace(go.Candlestick(
+        x=df.index, open=df["open"], high=df["high"],
+        low=df["low"], close=df["close"], name="OHLC",
+        increasing_line_color="#22c55e", decreasing_line_color="#ef4444"
+    ))
+
+    ma_cfg = [("ma10", show_ma10, "#f59e0b"),
+              ("ma20", show_ma20, "#ef4444"),
+              ("ma50", show_ma50, "#38bdf8")]
+    for col_name, show, color in ma_cfg:
+        if show and col_name in df.columns:
+            fig.add_trace(go.Scatter(
+                x=df.index, y=df[col_name],
+                name=col_name.upper(), mode="lines",
+                line=dict(color=color, width=1.5)
+            ))
+
+    fig.update_layout(
+        template="plotly_dark",
+        height=430,
+        xaxis_rangeslider_visible=False,
+        margin=dict(l=30, r=30, t=30, b=30),
+        legend=dict(bgcolor="rgba(0,0,0,0)")
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ── RSI & Volatility ─────────────────────────────────────────────
+    ri1, ri2 = st.columns(2)
+
+    with ri1:
+        fig_rsi = go.Figure()
+        fig_rsi.add_trace(go.Scatter(
+            x=df.index, y=df["rsi"], name="RSI(14)",
+            line=dict(color="#8b5cf6", width=2)
+        ))
+        fig_rsi.add_hline(y=70, line_dash="dash", line_color="#ef4444",
+                          annotation_text="Quá mua (70)", annotation_position="top right")
+        fig_rsi.add_hline(y=30, line_dash="dash", line_color="#22c55e",
+                          annotation_text="Quá bán (30)", annotation_position="bottom right")
+        fig_rsi.update_layout(
+            template="plotly_dark", height=260,
+            yaxis=dict(range=[0, 100]),
+            margin=dict(l=30, r=30, t=30, b=30),
+            title="Relative Strength Index (RSI)"
+        )
+        st.plotly_chart(fig_rsi, use_container_width=True)
+
+    with ri2:
+        fig_vol = go.Figure()
+        fig_vol.add_trace(go.Scatter(
+            x=df.index, y=df["volatility"] * 100,
+            name="Volatility", fill="tozeroy",
+            line=dict(color="#f59e0b", width=2)
+        ))
+        fig_vol.update_layout(
+            template="plotly_dark", height=260,
+            margin=dict(l=30, r=30, t=30, b=30),
+            title="Dao Động Giá Rolling (%)"
+        )
+        st.plotly_chart(fig_vol, use_container_width=True)
+
+    # ── AI Dự Báo ────────────────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("🧠 Dự Báo Trí Tuệ Nhân Tạo & Khuyến Nghị Đầu Tư")
+
+    with st.spinner("Đang chạy mô hình AI…"):
+        pred, err = api_predict(selected_ticker)
+
+    if err and pred is None:
+        # Chưa có model hoặc lỗi
+        st.markdown(f"""
+        <div class='reco-box' style='background:rgba(239,68,68,0.12);
+             border-left:6px solid #ef4444'>
+            <h3 style='color:#ef4444;margin:0'>⚠️ Chưa có mô hình AI cho {selected_ticker}</h3>
+            <p style='color:#cbd5e1;margin-top:10px;font-size:15px'>
+                {err}
+            </p>
+            <p style='color:#f1f5f9;font-weight:600;margin-top:12px'>
+                👉 Nhấn nút <b>"🤖 Train Model AI"</b> ở thanh bên trái để AI tự học từ dữ liệu lịch sử.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+    elif pred:
+        box_col = pred["box_color"]
+        txt_col = pred["text_color"]
+        reco = pred["recommendation"]
+        desc = pred["reco_desc"]
+        latest_c = pred["latest_close"]
+        next_c = pred["predicted_next_close"]
+        ret_pct = pred["predicted_return"] * 100
+        pred_dt = pred["prediction_date"]
+        model_name = pred["model_used"]
+        m = pred.get("metrics", {})
+
+        box1, box2 = st.columns([3, 2])
+
+        with box1:
+            st.markdown(f"""
+            <div class='reco-box' style='background:{box_col};
+                 border-left:6px solid {txt_col}'>
+                <h2 style='color:{txt_col};margin:0;font-size:28px'>{reco}</h2>
+                <p style='color:#1e293b;font-size:15px;line-height:1.6;margin:12px 0 20px'>{desc}</p>
+                <div style='display:flex;flex-wrap:wrap;gap:20px;
+                     background:rgba(255,255,255,0.65);
+                     padding:14px;border-radius:12px'>
+                    <div>
+                        <p style='margin:0;color:#475569;font-size:12px;font-weight:700'>
+                            Giá Hiện Tại
+                        </p>
+                        <p style='margin:4px 0 0;font-size:22px;font-weight:800;color:#0f172a'>
+                            ${latest_c:,.2f}
+                        </p>
+                    </div>
+                    <div>
+                        <p style='margin:0;color:#475569;font-size:12px;font-weight:700'>
+                            Dự Báo ({pred_dt})
+                        </p>
+                        <p style='margin:4px 0 0;font-size:22px;font-weight:800;color:{txt_col}'>
+                            ${next_c:,.2f}
+                        </p>
+                    </div>
+                    <div>
+                        <p style='margin:0;color:#475569;font-size:12px;font-weight:700'>
+                            Biến Động Dự Kiến
+                        </p>
+                        <p style='margin:4px 0 0;font-size:22px;font-weight:800;color:{txt_col}'>
+                            {ret_pct:+.2f}%
+                        </p>
                     </div>
                 </div>
-                """, unsafe_allow_html=True)
-                st.markdown("---")
-                # --------------------------------------------------------------------
-                
-                df_pred = pd.DataFrame(index=df_ticker.index)
-                df_pred['Actual'] = df_ticker[target_col] if target_col else 0
-                df_pred['Predicted'] = y_pred_return
-                df_pred['Error'] = np.abs(df_pred['Actual'] - df_pred['Predicted'])
-                
-                col1, col2 = st.columns([2, 1])
-                with col1:
-                    st.plotly_chart(dashboard.plot_prediction_vs_actual(df_pred.tail(100), selected_ticker), width='stretch')
-                with col2:
-                    st.plotly_chart(dashboard.plot_prediction_error(df_pred.tail(100)), width='stretch')
-            else:
-                st.warning("No trained models found. Run training pipeline first to view predictions.")
-                
-        with tab3:
-            colA, colB = st.columns(2)
-            with colA:
-                st.plotly_chart(dashboard.plot_rsi(df_ticker, selected_ticker), width='stretch')
-            with colB:
-                st.plotly_chart(dashboard.plot_volatility(df_ticker, selected_ticker), width='stretch')
-                
-        with tab4:
-            stock_data = {}
-            for t in tickers:
-                df_t = df[df['Ticker'] == t].copy()
-                if 'Date' in df_t.columns:
-                    df_t['Date'] = pd.to_datetime(df_t['Date'])
-                    df_t.set_index('Date', inplace=True)
-                stock_data[t] = df_t
-            st.plotly_chart(dashboard.plot_multiple_stocks(stock_data), width='stretch')
-            
-        with tab5:
-            dashboard.plot_correlation_heatmap(df_ticker)
-            
-    except Exception as e:
-        st.error(f"Error loading dashboard data: {str(e)}")
-        st.info("Make sure the ETL pipeline has run successfully and generated the processed data.")
+            </div>
+            """, unsafe_allow_html=True)
+
+        with box2:
+            st.markdown(f"#### 📊 Hiệu Năng Mô Hình AI")
+            st.markdown(f"🧠 Thuật toán: **{model_name}**")
+            met_df = pd.DataFrame({
+                "Chỉ Số": ["MAE (Lỗi Tuyệt Đối)", "RMSE (Lỗi Bình Phương)", "R² Score"],
+                "Giá Trị": [
+                    f"{m.get('mae', 0):.5f}",
+                    f"{m.get('rmse', 0):.5f}",
+                    f"{m.get('r2', 0)*100:.2f}%"
+                ]
+            })
+            st.dataframe(met_df, hide_index=True, use_container_width=True)
+            st.caption("💡 RMSE càng thấp = mô hình càng chính xác. R² gần 100% = khớp xu hướng cao.")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  VIEW 2: THỊ TRƯỜNG & SO SÁNH
+# ═══════════════════════════════════════════════════════════════════════
+
+elif view == "🔗 Thị Trường & So Sánh":
+
+    st.subheader("🌏 Tổng Hợp Thị Trường Thời Gian Thực")
+
+    with st.spinner("Đang tải dữ liệu thị trường…"):
+        summary = api_market_summary()
+
+    if not summary:
+        st.error("❌ Không lấy được dữ liệu thị trường. Kiểm tra Backend API đang chạy chưa?")
+        st.stop()
+
+    # ── Top Gainers & Losers ─────────────────────────────────────────
+    col_g, col_l = st.columns(2)
+
+    with col_g:
+        st.markdown("### 🟢 Top Tăng Giá Tốt Nhất")
+        gainers = summary.get("top_gainers", [])
+        if gainers:
+            gdf = pd.DataFrame(gainers)[["ticker", "close", "change_pct", "signal", "market"]]
+            gdf.columns = ["Mã", "Giá ($)", "Biến Động (%)", "Tín Hiệu AI", "Thị Trường"]
+            st.dataframe(
+                gdf.style.format({"Giá ($)": "${:.2f}", "Biến Động (%)": "{:+.2f}%"}),
+                use_container_width=True, hide_index=True
+            )
+        else:
+            st.info("Không có dữ liệu.")
+
+    with col_l:
+        st.markdown("### 🔴 Top Giảm Giá Sâu Nhất")
+        losers = summary.get("top_losers", [])
+        if losers:
+            ldf = pd.DataFrame(losers)[["ticker", "close", "change_pct", "signal", "market"]]
+            ldf.columns = ["Mã", "Giá ($)", "Biến Động (%)", "Tín Hiệu AI", "Thị Trường"]
+            st.dataframe(
+                ldf.style.format({"Giá ($)": "${:.2f}", "Biến Động (%)": "{:+.2f}%"}),
+                use_container_width=True, hide_index=True
+            )
+        else:
+            st.info("Không có dữ liệu.")
+
+    # ── Watchlist ────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 📌 Bảng Watchlist — Theo Dõi Tất Cả Mã")
+
+    wl_add1, wl_add2 = st.columns([3, 1])
+    with wl_add1:
+        new_ticker = st.text_input(
+            "➕ Thêm mã mới vào watchlist (VD: NVDA, META, VHM.VN):",
+            placeholder="Nhập mã và nhấn nút →"
+        ).strip().upper()
+    with wl_add2:
+        st.markdown("<div style='padding-top:26px'></div>", unsafe_allow_html=True)
+        if st.button("Thêm & Huấn luyện AI", use_container_width=True) and new_ticker:
+            with st.spinner(f"Đang xử lý mã {new_ticker}…"):
+                try:
+                    r = requests.post(f"{BACKEND_URL}/api/train/{new_ticker}", timeout=120)
+                    if r.status_code == 200:
+                        st.success(f"🎉 Đã thêm {new_ticker} thành công!")
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {r.text[:200]}")
+                except Exception as e:
+                    st.error(f"❌ {e}")
+
+    watchlist = summary.get("watchlist", [])
+    if watchlist:
+        wdf = pd.DataFrame(watchlist)
+        wdf = wdf[["ticker", "market", "close", "change_pct", "signal"]]
+        wdf.columns = ["Mã", "Thị Trường", "Giá Chốt ($)", "Thay Đổi (%)", "AI Khuyến Nghị"]
+        st.dataframe(
+            wdf.style.format({"Giá Chốt ($)": "${:.2f}", "Thay Đổi (%)": "{:+.2f}%"}),
+            use_container_width=True, hide_index=True, height=280
+        )
+
+    # ── Multi-Stock Comparison ───────────────────────────────────────
+    st.markdown("---")
+    st.subheader("🔗 So Sánh Tăng Trưởng Lũy Kế (Chuẩn hoá về mốc 100)")
+    st.caption("Giá tất cả các mã được quy về mốc 100 tại phiên đầu tiên để so sánh tốc độ tăng trưởng.")
+
+    all_tickers = [item["ticker"] for item in watchlist]
+    if all_tickers:
+        chosen = st.multiselect(
+            "Chọn các mã muốn so sánh:",
+            all_tickers,
+            default=all_tickers[:min(5, len(all_tickers))]
+        )
+
+        if chosen:
+            frames = []
+            for t in chosen:
+                d = api_historical(t, days=120)
+                if not d.empty:
+                    d["date"] = pd.to_datetime(d["date"])
+                    d = d.sort_values("date")
+                    first = d["close"].iloc[0]
+                    d["norm"] = d["close"] / first * 100
+                    d["ticker"] = t
+                    frames.append(d[["date", "norm", "ticker"]])
+
+            if frames:
+                df_all = pd.concat(frames)
+                fig_cmp = px.line(
+                    df_all, x="date", y="norm", color="ticker",
+                    template="plotly_dark",
+                    height=420,
+                    labels={"norm": "Giá trị chuẩn hoá (mốc=100)", "date": "Thời gian"}
+                )
+                fig_cmp.update_layout(
+                    hovermode="x unified",
+                    margin=dict(l=30, r=30, t=30, b=30),
+                    legend=dict(bgcolor="rgba(0,0,0,0)")
+                )
+                st.plotly_chart(fig_cmp, use_container_width=True)
+
+    # ── Correlation Heatmap ──────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("🔥 Heatmap Tương Quan Tỷ Suất Sinh Lời (120 phiên)")
+
+    heat_c1, heat_c2 = st.columns([2, 3])
+    with heat_c1:
+        st.markdown("""
+        <div class='glass-card'>
+            <p style='color:#94a3b8;font-size:14px;line-height:1.7'>
+            Biểu đồ thể hiện hệ số tương quan tỷ suất sinh lời hàng ngày giữa các mã:
+            </p>
+            <ul style='color:#cbd5e1;font-size:13px'>
+                <li><b style='color:#22c55e'>+1</b>: Biến động cùng chiều rất mạnh</li>
+                <li><b style='color:#94a3b8'>0</b>: Không tương quan — tốt để đa dạng hoá danh mục</li>
+                <li><b style='color:#ef4444'>-1</b>: Biến động ngược chiều hoàn toàn</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with heat_c2:
+        corr = summary.get("correlation", {})
+        if corr and corr.get("z"):
+            fig_h = px.imshow(
+                corr["z"], x=corr["x"], y=corr["y"],
+                color_continuous_scale="RdBu",
+                zmin=-1, zmax=1,
+                template="plotly_dark",
+                height=370
+            )
+            fig_h.update_layout(margin=dict(l=10, r=10, t=10, b=10))
+            st.plotly_chart(fig_h, use_container_width=True)
+        else:
+            st.info("Không có đủ dữ liệu để vẽ Heatmap.")
