@@ -2,18 +2,29 @@
 venv/
 env/
 .venv/
+.venv-model-compat/
 .env
+
 
 # Cache
 __pycache__/
 *.pyc
+*.pyo
 
-# Data & Models
-# data/raw/
-# data/processed/
-models/*.pkl
-models/*.h5
+# Data & Models - chỉ loại trừ model trung gian có timestamp, giữ lại best models
+models/gradient_boosting_*.pkl
+models/lightgbm_*.pkl
+models/linear_regression_*.pkl
+models/random_forest_*.pkl
+models/xgboost_*.pkl
+# models/*_best_model.pkl  <-- GIỮ LẠI (không ignore)
+# models/best_model_latest.pkl  <-- GIỮ LẠI (không ignore)
 
 # OS
 .DS_Store
 Thumbs.db
+
+# IDE
+.vscode/settings.json
+*.log
+

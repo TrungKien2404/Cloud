@@ -1,98 +1,145 @@
-# 📈 Hệ Thống Dự Đoán Giá Cổ Phiếu AI (Stock Prediction System)
+# 📈 Stock AI — Hệ Thống Dự Báo Giá Cổ Phiếu
 
-![Architecture Diagram](docs/architecture.png)
-
-Dự án này là một hệ thống Machine Learning End-to-End hoàn chỉnh, dự báo biến động giá cổ phiếu trên thị trường dựa trên lịch sử giao dịch và các chỉ báo phân tích kỹ thuật chuyên sâu.
+Hệ thống Machine Learning End-to-End, dự báo giá cổ phiếu toàn cầu dựa trên lịch sử giao dịch và các chỉ báo kỹ thuật. Hỗ trợ thị trường Mỹ 🇺🇸, Việt Nam 🇻🇳, Crypto và hơn 50.000 mã trên Yahoo Finance.
 
 ---
 
-## 1. SƠ ĐỒ KIẾN TRÚC HỆ THỐNG TỔNG QUAN
+## 1. KIẾN TRÚC HỆ THỐNG
 
 ```text
-╔════════════════════════════════════════════════════════════════════════════╗
-║                    STOCK PRICE PREDICTION SYSTEM ARCHITECTURE              ║
-╚════════════════════════════════════════════════════════════════════════════╝
-
-┌────────────────────────────────────────────────────────────────────────────┐
-│ TIER 1: KÉO DỮ LIỆU TỪ YAHOO FINANCE (Ingestion Layer)                     │
-└────────────────────────────────────────────────────────────────────────────┘
-        │
-┌───────▼────────────────────────────────────────────────────────────────────┐
-│ TIER 2: XỬ LÝ ETL VÀ PHÂN TÍCH CHỈ BÁO (Processing Layer)                  │
-│       ├─ Điền khuyết dữ liệu thị trường (Data Cleaning)                    │
-│       ├─ Tính toán RSI, MA10, MA50, Biến động (Volatility)                 │
-│       └─ Chuẩn hóa (Scaling) và Chia tập Train/Test                        │
-└────────────────────────────────────────────────────────────────────────────┘
-        │
-┌───────▼────────────────────────────────────────────────────────────────────┐
-│ TIER 3: HUẤN LUYỆN MACHINE LEARNING (Model Layer)                          │
-│       ├─ Random Forest Regressor & Gradient Boosting                       │
-│       ├─ Tính điểm RMSE, R2 Score và Chọn Thuật toán tốt nhất              │
-│       └─ Kết xuất mô hình (.pkl files)                                     │
-└────────────────────────────────────────────────────────────────────────────┘
-        │
-┌───────▼────────────────────────────────────────────────────────────────────┐
-│ TIER 4: TRÌNH DIỄN & TƯ VẤN (Web & API Layer)                              │
-│       ├─ Fast API: Luồng trả Json tự động dưới dạng Server backend         │
-│       ├─ Streamlit: Trực quan hóa đồ thị thị trường lên Web Dashboard      │
-│       └─ 🧠 AI Recommendation: Dịch ngôn ngữ máy sang ngôn ngữ MUA/BÁN     │
-└────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ Streamlit Dashboard  (dashboard/dashboard.py)                │
+│  ├─ Tab "Phân Tích Từ Hệ Thống"  ← gọi FastAPI Backend      │
+│  └─ Tab "AI Dự Báo — Nhập Mã Bất Kỳ"  ← yfinance trực tiếp │
+├──────────────────────────────────────────────────────────────┤
+│ FastAPI Backend  (api/api_service.py)                        │
+│  └─ /api/data, /api/predict, /api/train, /api/market-summary │
+├──────────────────────────────────────────────────────────────┤
+│ ML Models  (model/)  + ETL Pipeline  (etl/)                  │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. CÁCH CHẠY DỰ ÁN (CHUẨN CHỈ, KHÔNG LỖI)
+## 2. CÀI ĐẶT THƯ VIỆN
 
-### Cách 1: Chạy hoàn toàn trên máy cá nhân (Local)
-Đây là cách nhanh nhất để thấy kết quả hệ thống chạy mượt mà trên máy tính của bạn.
+```bash
+pip install -r requirements.txt
+```
 
-1. **Khởi tạo môi trường & cài thư viện:**
-   Mở Terminal trong thư mục dự án: `pip install -r requirements.txt`
-   
-2. **Chạy Trí Tuệ Nhân Tạo (Kéo Data + Huấn Luyện Máy Học):**
-   *(Nếu bạn không dùng notebook Databricks mà chạy trực tiếp file python)*
-   Bật Terminal gõ:
-   - `python run_etl.py` (Để làm sạch dữ liệu)
-   - `python run_training.py` (Chờ khoảng 1-2 phút cho thẻ học máy xong mô hình)
-
-3. **Mở Bảng Điều Khiển (Dashboard Giao thức):**
-   Mở một Terminal khác:
-   - `streamlit run dashboard/dashboard.py`
-   *(Trình duyệt sẽ lập tức mở đồ thị lên và đánh giá đầu tư trực tiếp)*
-
-4. **Khởi động API chạy ngầm (Dành cho việc liên kết Mobile APP nếu muốn):**
-   - `uvicorn api.api_service:app --reload`
-   Truy cập `http://localhost:8000/docs` để test việc lấy dữ liệu tự động.
-
-### Cách 2: Chạy trực tiếp trên Đám mây (Databricks Community Edition)
-1. Kết nối kho lưu trữ với GitHub thông qua tính năng **Git Folders** của Databricks.
-2. Khởi tạo một Cluster Serverless hoặc Cluster bình thường (có mũi tên xanh lá là bật).
-3. Vào thư mục `notebooks` trên repo Databricks được kéo về, mở file `01_etl_pipeline.py`.
-4. Bấm **Run All** (hoặc `Shift + Enter` ở từng cell). Databricks sẽ tự chẻ các dòng mã `# COMMAND ----------` làm nhiều đốt (cell). 
-*Lưu ý: Nếu dùng bản Databricks Miễn phí, code trong thư mục notebook đã được tối ưu để lưu và luân chuyển Dataframe gốc đứt quãng trên CPU luôn để né lỗi cấm đọc Write Table Unity Catalog.*
+Các thư viện chính:
+- `streamlit` — giao diện web
+- `yfinance` — lấy dữ liệu Yahoo Finance
+- `scikit-learn` — các mô hình ML
+- `plotly` — biểu đồ tương tác
+- `pandas`, `numpy` — xử lý dữ liệu
+- `fastapi`, `uvicorn` — backend API
 
 ---
 
-## 3. GIẢI THÍCH CHI TIẾT CÁC ĐOẠN CODE QUAN TRỌNG NHẤT
+## 3. CÁCH CHẠY APP
 
-### A. Quá trình Nhào Nặn Dữ Liệu (ETL Pipeline / Feature Engineering)
-Nằm tại: `notebooks/01_etl_pipeline.py` (hoặc `etl/data_processor.py`).
-Đây là "trái tim" của hệ thống vì AI chỉ thông minh nếu như được ăn loại dữ liệu "sạch".
-* **Lọc nhiễu / Điền khuyết (Data Cleaning):** Do thị trường có những ngày đóng cửa cuối tuần làm dữ liệu trên biểu đồ thường hay có lỗ trống. Chúng tôi dùng hàm `ffill()` và `bfill()` để "trám" ngay dữ liệu của phiên chốt liền trước đó vào lỗ hổng để máy học giữ được guồng.
-* **Chỉ báo Kỹ thuật (Technical Indicators):** Trong chứng khoán, giá không tự sinh ra. Dự án đã tự động phân tích thêm các cột phụ như **MA10, MA20** (Giá Trung bình), **RSI** (Chỉ số sức mạnh nội tại) và **Volatility** (Dao động biên) để mô phỏng "tâm lý sợ hãi hay hưng phấn" của đám đông.
-* **Mục tiêu đích (Target Variable):** Máy học sẽ học biến số `Biến động Ngày Mai` = `(Giá đóng cửa Ngày Mai / Giá đóng cửa Hôm nay) - 1`. Đây là công thức đếm bước thực dụng nhất, tránh tình trạng ép Machine Learning phải đoán mò một con số chênh hẳn 50 Đô-la. Nó dự đoán theo %. 
+### Chạy nhanh (chỉ cần Streamlit — không cần backend):
 
-### B. Chọn Mặt Gửi Vàng (Machine Learning Models)
-Nằm tại: `model/model_training.py` hoặc `run_training.py`.
-* Hệ thống không bảo thủ xài 1 loại thuật toán, mà nó đẩy dữ liệu cùng một lúc chạy đua vào 3 thuật toán: `Linear Regression` (Đường thẳng cơ bản), `Random Forest` (Rừng quyết định), và `Gradient Boosting` (Dồn trọng số).
-* Sau khi cả 3 chạy xong tập Dữ Liệu Thi (Test Set), nó tự đối chiếu bằng thước đo **RMSE** (Lỗi phân cấp tuyệt đối). 
-* Thằng nào cắm thấp nhất = Lỗi ít nhất, hệ thống sẽ `pkl.dump` đóng gói não của nó lại thành file trong mục `models/...pkl` để xài vĩnh viễn không cần huấn luyện lại.
+```bash
+streamlit run dashboard/dashboard.py
+```
 
-### C. Khuyến Nghị Tư Vấn Thông Minh trên Dashboard
-Nằm tại: `dashboard/dashboard.py` (Khu vực New Feature AI Recommendation).
-* Ứng dụng lọc trích xuất 1 nhịp chót của Index Thời Gian (Dữ liệu ngày hôm nay) làm "Mẫu thử trực tiếp". Đẩy nhanh vào mô hình `.predict()` để cho ra cái % tăng trưởng của chính phiên tiếp theo chưa xảy ra trong thực tế.
-* Đưa vào cây Logic quy đổi: 
-   - **Tăng trên > 1%** (Dự báo vút nắp: MUA MẠNH).
-   - **Tăng từ 0 - 1%** (Dự tính sideway hoặc tăng hờ: Cân nhắc GIỮ hoặc mua dò).
-   - **Giảm < 0%** (Rủi ro: Hạ tỉ trọng hoặc cắt lỗ GẤP).
-Mô hình sẽ tô màu rất rõ Xanh Đỏ để loại trừ hoàn toàn việc quyết định cảm tính của con người khi xem bảng điện.
+Tab **"🤖 AI Dự Báo — Nhập Mã Bất Kỳ"** hoạt động hoàn toàn độc lập, không cần backend.
+
+### Chạy đầy đủ (có backend API):
+
+```bash
+# Terminal 1 — ETL + Train
+python run_etl.py
+python run_training.py
+
+# Terminal 2 — FastAPI Backend
+uvicorn api.api_service:app --reload
+
+# Terminal 3 — Streamlit Dashboard
+streamlit run dashboard/dashboard.py
+```
+
+---
+
+## 4. CÁCH DÙNG PHẦN "AI DỰ BÁO — NHẬP MÃ BẤT KỲ"
+
+1. Vào menu bên trái → chọn **"📈 Phân Tích & AI Dự Báo"**
+2. Chọn tab **"🤖 AI Dự Báo — Nhập Mã Bất Kỳ"**
+3. Nhập mã cổ phiếu vào ô nhập liệu, ví dụ:
+   - `AAPL` — Apple (Mỹ)
+   - `TSLA` — Tesla (Mỹ)
+   - `NVDA` — NVIDIA (Mỹ)
+   - `BTC-USD` — Bitcoin
+   - `ETH-USD` — Ethereum
+   - `FPT.VN` — FPT (Việt Nam)
+   - `VNM.VN` — Vinamilk (Việt Nam)
+4. Chọn **Khoảng thời gian**: 6mo / 1y / 2y / 5y
+5. Chọn **Chu kỳ**: 1d / 1wk / 1mo
+6. Nhấn **"🔍 Phân Tích & Dự Báo"**
+
+Kết quả bao gồm:
+- Biểu đồ nến (Candlestick) + MA20 + MA50 + Volume
+- RSI (14) và MACD
+- Bảng so sánh 3 mô hình ML
+- Biểu đồ Actual vs Predicted
+- Dự đoán giá phiên tiếp theo
+- Khuyến nghị AI: MUA MẠNH / MUA / THEO DÕI / BÁN / BÁN MẠNH
+
+---
+
+## 5. CÁC MÔ HÌNH VÀ CHỈ SỐ
+
+### Mô hình ML
+
+| Mô hình | Mô tả |
+|---|---|
+| **Linear Regression** | Hồi quy tuyến tính — đơn giản, diễn giải dễ |
+| **Random Forest** | Tập hợp nhiều cây quyết định — mạnh với dữ liệu phi tuyến |
+| **Gradient Boosting** | Tăng cường gradient — thường cho kết quả tốt nhất |
+
+Mô hình tốt nhất được chọn theo **RMSE thấp nhất**.
+
+### Chỉ số đánh giá
+
+| Chỉ số | Ý nghĩa | Tốt khi |
+|---|---|---|
+| **MAE** (Mean Absolute Error) | Sai số tuyệt đối trung bình | Càng thấp càng tốt |
+| **RMSE** (Root Mean Square Error) | Căn bậc hai sai số bình phương trung bình — phạt nặng outlier | Càng thấp càng tốt |
+| **R²** (R-squared) | Tỷ lệ phương sai được giải thích | Càng gần 1.0 càng tốt |
+| **MAPE** (Mean Absolute Percentage Error) | Sai số % trung bình | Càng thấp càng tốt |
+
+### Chỉ báo kỹ thuật
+
+| Chỉ báo | Mô tả |
+|---|---|
+| **MA20 / MA50** | Trung bình động 20 / 50 phiên |
+| **RSI (14)** | Chỉ số sức mạnh tương đối — >70: quá mua, <30: quá bán |
+| **MACD** | Hội tụ / phân kỳ đường trung bình động |
+| **Volatility** | Độ dao động giá rolling 20 phiên |
+
+---
+
+## 6. CẤU TRÚC THƯ MỤC
+
+```
+Cloud/
+├── dashboard/
+│   ├── dashboard.py       # Giao diện chính Streamlit
+│   └── ai_analysis.py     # Module AI Dự Báo độc lập (yfinance)
+├── api/                   # FastAPI Backend
+├── model/                 # Huấn luyện ML
+├── etl/                   # ETL Pipeline
+├── data/                  # Dữ liệu local
+├── notebooks/             # Databricks notebooks
+└── requirements.txt
+```
+
+---
+
+## 7. ⚠️ CẢNH BÁO QUAN TRỌNG
+
+> **Kết quả phân tích và dự báo chỉ phục vụ mục đích học tập / nghiên cứu, KHÔNG phải lời khuyên đầu tư.**
+>
+> Thị trường tài chính có rủi ro rất cao. Mọi quyết định đầu tư cần được tham khảo từ chuyên gia tài chính có chuyên môn. Nhóm phát triển không chịu trách nhiệm về bất kỳ tổn thất tài chính nào.

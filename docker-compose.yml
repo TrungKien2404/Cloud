@@ -4,7 +4,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: backend.Dockerfile
+      dockerfile: docker/backend.Dockerfile
     container_name: stock_prediction_backend
     ports:
       - "8000:8000"
@@ -19,7 +19,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: frontend.Dockerfile
+      dockerfile: docker/frontend.Dockerfile
     container_name: stock_prediction_frontend
     ports:
       - "8501:8501"
