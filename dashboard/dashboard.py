@@ -75,6 +75,47 @@ h1, h2, h3 { color: #f1f5f9 !important; font-weight: 800 !important; }
     border-right: 1px solid rgba(148,163,184,0.12);
 }
 
+[data-testid="stSidebar"] * {
+    font-size: 17px !important;
+}
+
+[data-testid="stSidebar"] h2 {
+    font-size: 22px !important;
+    font-weight: 800 !important;
+}
+
+.nav-btn {
+    display: block;
+    width: 100%;
+    padding: 14px 20px;
+    margin-bottom: 10px;
+    border-radius: 12px;
+    border: 1px solid rgba(148,163,184,0.2);
+    background: rgba(30,41,59,0.6);
+    color: #cbd5e1;
+    font-size: 17px;
+    font-weight: 600;
+    font-family: 'Outfit', sans-serif;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s ease;
+    letter-spacing: 0.3px;
+}
+
+.nav-btn:hover {
+    background: rgba(99,102,241,0.25);
+    border-color: rgba(99,102,241,0.5);
+    color: #f1f5f9;
+    transform: translateX(4px);
+}
+
+.nav-btn.active {
+    background: linear-gradient(135deg, rgba(99,102,241,0.4), rgba(168,85,247,0.3));
+    border-color: rgba(99,102,241,0.7);
+    color: #f1f5f9;
+    box-shadow: 0 4px 16px rgba(99,102,241,0.2);
+}
+
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: #0f172a; }
 ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
@@ -174,16 +215,56 @@ st.markdown("---")
 # =======================================================================
 
 st.sidebar.markdown("<h2 style='text-align:center'>Bảng Điều Khiển</h2>", unsafe_allow_html=True)
+st.sidebar.markdown("---")
 
-view = st.sidebar.radio(
-    "Chế độ hiển thị",
-    ["🏠 Tổng quan", "📊 Phân Tích & AI Dự Báo", "🔍 Thị Trường & So Sánh"],
-    index=0,
-)
+# Navigation buttons
+if "current_view" not in st.session_state:
+    st.session_state["current_view"] = "Tổng quan"
+
+view_options = [
+    "Tổng quan",
+    "Phân Tích & AI Dự Báo",
+    "Thị Trường & So Sánh",
+]
+
+for opt in view_options:
+    is_active = "active" if st.session_state["current_view"] == opt else ""
+    if st.sidebar.button(opt, key=f"nav_{opt}", use_container_width=True):
+        st.session_state["current_view"] = opt
+        st.rerun()
+
+# Apply button styles
+st.sidebar.markdown("""
+<style>
+[data-testid="stSidebar"] [data-testid^="stBaseButton"] button {
+    background: rgba(30,41,59,0.6) !important;
+    border: 1px solid rgba(148,163,184,0.2) !important;
+    color: #cbd5e1 !important;
+    font-size: 17px !important;
+    font-weight: 600 !important;
+    padding: 14px 20px !important;
+    border-radius: 12px !important;
+    text-align: left !important;
+    justify-content: flex-start !important;
+    transition: all 0.2s ease !important;
+    margin-bottom: 6px !important;
+    letter-spacing: 0.3px !important;
+    width: 100% !important;
+}
+[data-testid="stSidebar"] [data-testid^="stBaseButton"] button:hover {
+    background: rgba(99,102,241,0.25) !important;
+    border-color: rgba(99,102,241,0.5) !important;
+    color: #f1f5f9 !important;
+    transform: translateX(4px) !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+view = st.session_state["current_view"]
 
 st.sidebar.markdown("---")
 
-if st.sidebar.button("Cập nhật dữ liệu toàn hệ thống", use_container_width=True):
+if st.sidebar.button("Cập nhật dữ liệu toàn hệ thống", use_container_width=True, key="update_data_btn"):
     try:
         r = requests.post(f"{BACKEND_URL}/api/update-data", timeout=5)
         if r.status_code == 200:
@@ -197,7 +278,7 @@ if st.sidebar.button("Cập nhật dữ liệu toàn hệ thống", use_containe
 #  VIEW 1: PHÂN TÍCH & AI DỰ BÁO
 # =======================================================================
 
-if view == "🏠 Tổng quan":
+if view == "Tổng quan":
     if not MARKET_MODULE_OK:
         st.error(f"Không tải được module thị trường: {_MK_ERR_MSG}")
     else:
@@ -208,7 +289,7 @@ if view == "🏠 Tổng quan":
 #  VIEW 2: PHÂN TÍCH & AI DỰ BÁO
 # =======================================================================
 
-elif view == "📊 Phân Tích & AI Dự Báo":
+elif view == "Phân Tích & AI Dự Báo":
     if not AI_MODULE_OK:
         st.error(f"Không tải được module AI: {_AI_ERR_MSG}")
     else:
@@ -219,7 +300,7 @@ elif view == "📊 Phân Tích & AI Dự Báo":
 #  VIEW 3: THỊ TRƯỜNG & SO SÁNH
 # =======================================================================
 
-elif view == "🔍 Thị Trường & So Sánh":
+elif view == "Thị Trường & So Sánh":
 
     st.subheader("Tổng Hợp Thị Trường")
 
