@@ -149,15 +149,40 @@ class StockDataIngestion:
             - Giúp dễ dàng load toàn bộ dữ liệu một lần
         """
         try:
-            # Combine tất cả DataFrames
-            combined_df = pd.concat(data.values(), ignore_index=False)
-            
-            # Reset index để Date trở thành column
-            combined_df = combined_df.reset_index()
-            
+            # Chuyển đổi và chuẩn bị các DataFrame mới
+            new_dfs = []
+            for t, df in data.items():
+                df_copy = df.copy()
+                if 'Date' not in df_copy.columns:
+                    df_copy = df_copy.reset_index()
+                # Đảm bảo cột Date là datetime
+                if 'Date' in df_copy.columns:
+                    df_copy['Date'] = pd.to_datetime(df_copy['Date'])
+                new_dfs.append(df_copy)
+                
+            new_combined = pd.concat(new_dfs, ignore_index=True)
             file_path = os.path.join(self.raw_data_path, "combined_stock_data.parquet")
-            combined_df.to_parquet(file_path)
             
+            if os.path.exists(file_path):
+                try:
+                    existing_df = pd.read_parquet(file_path)
+                    if 'Date' in existing_df.columns:
+                        existing_df['Date'] = pd.to_datetime(existing_df['Date'])
+                    
+                    # Lọc bỏ dữ liệu cũ của các mã vừa tải để tránh trùng lặp
+                    new_tickers = list(data.keys())
+                    filtered_existing = existing_df[~existing_df['Ticker'].isin(new_tickers)]
+                    
+                    # Concat mã mới lên ĐẦU (đứng trước mã cũ) để khi trích xuất unique nó luôn đứng đầu bảng
+                    combined_df = pd.concat([new_combined, filtered_existing], ignore_index=True)
+                except Exception as read_err:
+                    logger.warning(f"Could not read existing combined data, overwriting: {read_err}")
+                    combined_df = new_combined
+            else:
+                combined_df = new_combined
+                
+            # Ghi đè file bảo toàn dữ liệu
+            combined_df.to_parquet(file_path, index=False)
             logger.info(f"Saved combined data ({len(combined_df)} records) to {file_path}")
             
         except Exception as e:

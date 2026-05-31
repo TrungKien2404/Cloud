@@ -135,6 +135,43 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str
     username: str
+WATCHLIST_ORDER_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "watchlist_order.json")
+
+def load_watchlist_order() -> List[str]:
+    try:
+        if os.path.exists(WATCHLIST_ORDER_FILE):
+            with open(WATCHLIST_ORDER_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.error(f"Error loading watchlist order: {str(e)}")
+    return []
+
+def save_watchlist_order(order: List[str]):
+    try:
+        os.makedirs(os.path.dirname(WATCHLIST_ORDER_FILE), exist_ok=True)
+        with open(WATCHLIST_ORDER_FILE, "w", encoding="utf-8") as f:
+            json.dump(order, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        logger.error(f"Error saving watchlist order: {str(e)}")
+
+def add_ticker_to_watchlist_top(ticker: str):
+    ticker_upper = ticker.upper()
+    order = load_watchlist_order()
+    
+    # If list is empty, initialize with default tickers
+    if not order:
+        order = list(config.data.get('tickers', []))
+        
+    # Remove if already exists to move to top
+    if ticker_upper in order:
+        try:
+            order.remove(ticker_upper)
+        except ValueError:
+            pass
+        
+    # Insert at top
+    order.insert(0, ticker_upper)
+    save_watchlist_order(order)
 
 
 
@@ -499,6 +536,9 @@ def train_ticker_model(ticker: str):
     ticker_upper = ticker.upper()
     logger.info(f"Triggering training request for ticker: {ticker_upper}")
     
+    # Thêm mã này lên đầu danh sách theo dõi
+    add_ticker_to_watchlist_top(ticker_upper)
+    
     try:
         # Step 1: Lấy dữ liệu mới nhất
         ingestion = StockDataIngestion(
@@ -583,7 +623,14 @@ def get_market_summary():
         
         # 1. TÍNH LATEST VALUES CHO TẤT CẢ TICKERS
         latest_data = []
-        tickers = df['Ticker'].unique()
+        
+        # Sắp xếp tickers theo watchlist_order.json
+        order = load_watchlist_order()
+        if not order:
+            order = list(config.data.get('tickers', []))
+            
+        order_map = {ticker: i for i, ticker in enumerate(order)}
+        tickers = sorted(df['Ticker'].unique(), key=lambda x: order_map.get(x, 9999))
         
         # Dataframe lưu trữ returns lịch sử để tính tương quan
         returns_dict = {}
