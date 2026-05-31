@@ -1,18 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, HelpCircle, AlertTriangle, Sparkles, Zap, Settings, RefreshCw, User, Cpu } from 'lucide-react';
+import { Send, AlertTriangle, Sparkles, Zap, Settings, RefreshCw } from 'lucide-react';
 import api from '../api';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
-
-const PRESETS = [
-  "Phân tích nhanh mã FPT.VN",
-  "Phân tích nhanh mã HPG.VN",
-  "Phân tích nhanh mã AAPL",
-  "Phân tích nhanh mã BTC-USD"
-];
 
 const ChatAssistant: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>(() => {
@@ -144,7 +137,7 @@ const ChatAssistant: React.FC = () => {
     }
   };
 
-  const handleDownloadPDF = (htmlContent: string, index: number) => {
+  const handleDownloadPDF = (htmlContent: string) => {
     const tickerMatch = htmlContent.match(/Phân tích nhanh\s+([A-Za-z0-9.-]+)/i);
     const tickerName = tickerMatch ? tickerMatch[1].trim() : 'Stock';
     const dateStr = new Date().toISOString().slice(0, 10);
@@ -249,7 +242,7 @@ const ChatAssistant: React.FC = () => {
                 />
                 {msg.role === 'assistant' && msg.content.includes('Phân tích nhanh') && (
                   <button
-                    onClick={() => handleDownloadPDF(msg.content, idx)}
+                    onClick={() => handleDownloadPDF(msg.content)}
                     style={{
                       background: 'rgba(99, 102, 241, 0.2)',
                       border: '1px solid rgba(99, 102, 241, 0.4)',
