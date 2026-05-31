@@ -1,29 +1,24 @@
-# Base image
-FROM python:3.11-slim
+# Stage 1: Build the React application
+FROM node:20-alpine AS build
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Copy package JSON files and install dependencies
+COPY frontend-react/package*.json ./
+RUN npm install
 
-# Copy requirements file and install
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy the rest of the application files and build
+COPY frontend-react/ ./
+RUN npm run build
 
-# Copy application source code
-COPY . .
+# Stage 2: Serve the static files using Nginx
+FROM nginx:alpine
 
-# Expose Streamlit port
-EXPOSE 8501
+# Copy the build output to Nginx's default public directory
+COPY --from=build /app/dist /usr/share/nginx/html
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONIOENCODING=utf-8
-ENV BACKEND_URL=http://backend:8000
+# Expose port 80
+EXPOSE 80
 
-# Run Streamlit app
-CMD ["streamlit", "run", "dashboard/dashboard.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+# Start Nginx
+CMD ["nginx", "-g", "daemon off;"]

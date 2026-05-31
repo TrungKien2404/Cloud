@@ -37,6 +37,194 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# =======================================================================
+#  AUTH — ĐĂNG NHẬP / ĐĂNG KÝ
+# =======================================================================
+
+import json
+import hashlib
+
+USERS_FILE = os.path.join(os.path.dirname(__file__), "..", ".streamlit", "users.json")
+
+def _hash(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def _load_local_users() -> dict:
+    try:
+        if os.path.exists(USERS_FILE):
+            with open(USERS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+def _save_local_users(users: dict):
+    os.makedirs(os.path.dirname(USERS_FILE), exist_ok=True)
+    with open(USERS_FILE, "w", encoding="utf-8") as f:
+        json.dump(users, f, ensure_ascii=False, indent=2)
+
+def check_login(username: str, password: str) -> bool:
+    # Kiểm tra secrets.toml (plain text)
+    try:
+        valid_users = st.secrets.get("users", {})
+        if valid_users.get(username) == password:
+            return True
+    except Exception:
+        if username == "admin" and password == "admin123":
+            return True
+    # Kiểm tra users.json (hashed)
+    local_users = _load_local_users()
+    entry = local_users.get(username)
+    if entry and entry.get("password_hash") == _hash(password):
+        return True
+    return False
+
+def register_user(username: str, email: str, password: str) -> tuple[bool, str]:
+    if len(username) < 3:
+        return False, "Tên đăng nhập phải có ít nhất 3 ký tự."
+    if len(password) < 6:
+        return False, "Mật khẩu phải có ít nhất 6 ký tự."
+    # Kiểm tra trùng với secrets
+    try:
+        if username in st.secrets.get("users", {}):
+            return False, "Tên đăng nhập đã tồn tại."
+    except Exception:
+        if username == "admin":
+            return False, "Tên đăng nhập đã tồn tại."
+    # Kiểm tra trùng với local
+    local_users = _load_local_users()
+    if username in local_users:
+        return False, "Tên đăng nhập đã tồn tại."
+    local_users[username] = {
+        "email": email,
+        "password_hash": _hash(password),
+    }
+    _save_local_users(local_users)
+    return True, "Đăng ký thành công!"
+
+def render_auth_page():
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+    html, body, [class*="css"] { font-family: 'Outfit', sans-serif; }
+    .stApp { background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%); }
+
+    .auth-card {
+        background: rgba(30, 41, 59, 0.88);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        border-radius: 24px;
+        padding: 40px 48px 48px 48px;
+        backdrop-filter: blur(16px);
+        box-shadow: 0 24px 64px rgba(0,0,0,0.45);
+        margin: auto;
+    }
+    .auth-logo { font-size: 52px; text-align: center; margin-bottom: 6px; }
+    .auth-title { font-size: 28px; font-weight: 800; color: #f1f5f9; text-align: center; margin: 0 0 2px 0; }
+    .auth-sub   { font-size: 13px; color: #64748b; text-align: center; margin-bottom: 28px; }
+
+    [data-testid="stTextInput"] input {
+        background: rgba(15, 23, 42, 0.8) !important;
+        border: 1px solid rgba(148, 163, 184, 0.2) !important;
+        border-radius: 10px !important;
+        color: #f1f5f9 !important;
+        font-size: 15px !important;
+        padding: 12px 16px !important;
+    }
+    [data-testid="stTextInput"] input:focus {
+        border-color: rgba(99, 102, 241, 0.6) !important;
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
+    }
+    [data-testid="stTextInput"] label {
+        color: #94a3b8 !important; font-size: 13px !important; font-weight: 600 !important;
+    }
+    [data-testid="stFormSubmitButton"] button {
+        background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+        border: none !important; border-radius: 10px !important;
+        color: white !important; font-size: 16px !important; font-weight: 700 !important;
+        padding: 13px !important; width: 100% !important;
+        transition: all 0.2s ease !important;
+        box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4) !important;
+        margin-top: 8px !important;
+    }
+    [data-testid="stFormSubmitButton"] button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 8px 28px rgba(99, 102, 241, 0.55) !important;
+    }
+    /* Tab styling */
+    [data-testid="stTabs"] [data-baseweb="tab-list"] {
+        background: rgba(15,23,42,0.5) !important;
+        border-radius: 12px !important;
+        padding: 4px !important;
+        gap: 4px !important;
+        margin-bottom: 24px !important;
+    }
+    [data-testid="stTabs"] [data-baseweb="tab"] {
+        border-radius: 9px !important;
+        font-size: 15px !important;
+        font-weight: 600 !important;
+        color: #94a3b8 !important;
+        padding: 10px 0 !important;
+    }
+    [data-testid="stTabs"] [aria-selected="true"] {
+        background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+        color: white !important;
+    }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("""
+        <div class='auth-logo'>Stock AI System  </div>
+        <p class='auth-sub'>Nền tảng phân tích & dự báo cổ phiếu thông minh</p>
+        """, unsafe_allow_html=True)
+
+        tab_login, tab_register = st.tabs(["Đăng Nhập", "Đăng Ký"])
+
+        # ── TAB ĐĂNG NHẬP ──────────────────────────────────────
+        with tab_login:
+            with st.form("login_form"):
+                username = st.text_input("Tên đăng nhập", placeholder="Nhập username...", key="li_user")
+                password = st.text_input("Mật khẩu", type="password", placeholder="Nhập mật khẩu...", key="li_pass")
+                submitted = st.form_submit_button("Đăng Nhập", use_container_width=True)
+
+            if submitted:
+                if check_login(username.strip(), password):
+                    st.session_state["authenticated"] = True
+                    st.session_state["username"] = username.strip()
+                    st.rerun()
+                else:
+                    st.error("❌ Sai tên đăng nhập hoặc mật khẩu!")
+
+        # ── TAB ĐĂNG KÝ ────────────────────────────────────────
+        with tab_register:
+            with st.form("register_form"):
+                reg_user  = st.text_input("Tên đăng nhập", placeholder="Tối thiểu 3 ký tự...", key="rg_user")
+                reg_email = st.text_input("Email", placeholder="example@email.com", key="rg_email")
+                reg_pass  = st.text_input("Mật khẩu", type="password", placeholder="Tối thiểu 6 ký tự...", key="rg_pass")
+                reg_pass2 = st.text_input("Xác nhận mật khẩu", type="password", placeholder="Nhập lại mật khẩu...", key="rg_pass2")
+                reg_submitted = st.form_submit_button("Tạo Tài Khoản", use_container_width=True)
+
+            if reg_submitted:
+                if not reg_user.strip() or not reg_pass:
+                    st.error("⚠️ Vui lòng điền đầy đủ thông tin.")
+                elif reg_pass != reg_pass2:
+                    st.error("❌ Mật khẩu xác nhận không khớp!")
+                else:
+                    ok, msg = register_user(reg_user.strip(), reg_email.strip(), reg_pass)
+                    if ok:
+                        st.success(f"✅ {msg} Hãy chuyển sang tab Đăng Nhập.")
+                    else:
+                        st.error(f"❌ {msg}")
+
+if not st.session_state.get("authenticated", False):
+    render_auth_page()
+    st.stop()
+
+
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
@@ -215,6 +403,23 @@ st.markdown("---")
 # =======================================================================
 
 st.sidebar.markdown("<h2 style='text-align:center'>Bảng Điều Khiển</h2>", unsafe_allow_html=True)
+
+# Hiển thị user đang đăng nhập
+current_user = st.session_state.get("username", "")
+st.sidebar.markdown(f"""
+<div style='
+    background: rgba(99,102,241,0.15);
+    border: 1px solid rgba(99,102,241,0.3);
+    border-radius: 10px;
+    padding: 10px 14px;
+    text-align: center;
+    margin-bottom: 4px;
+'>
+    <span style='color:#94a3b8; font-size:12px;'>đăng nhập với</span><br>
+    <span style='color:#a5b4fc; font-size:16px; font-weight:700;'>👤 {current_user}</span>
+</div>
+""", unsafe_allow_html=True)
+
 st.sidebar.markdown("---")
 
 # Navigation buttons
@@ -271,6 +476,28 @@ if st.sidebar.button("Cập nhật dữ liệu toàn hệ thống", use_containe
             st.sidebar.info("Đã kích hoạt cập nhật. Hoàn tất sau ~60 giây.")
     except Exception as e:
         st.sidebar.error(f"Lỗi: {e}")
+
+# Nút đăng xuất
+st.sidebar.markdown("""
+<style>
+[data-testid="stSidebar"] [data-testid="stBaseButton-logout_btn"] button,
+[data-testid="stSidebar"] div[data-testid$="logout_btn"] button {
+    background: rgba(239,68,68,0.15) !important;
+    border: 1px solid rgba(239,68,68,0.35) !important;
+    color: #fca5a5 !important;
+}
+[data-testid="stSidebar"] div[data-testid$="logout_btn"] button:hover {
+    background: rgba(239,68,68,0.3) !important;
+    border-color: rgba(239,68,68,0.6) !important;
+    color: #fee2e2 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+if st.sidebar.button("🚪 Đăng xuất", use_container_width=True, key="logout_btn"):
+    st.session_state["authenticated"] = False
+    st.session_state["username"] = ""
+    st.rerun()
 
 
 

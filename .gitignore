@@ -4,6 +4,7 @@ env/
 .venv/
 .venv-model-compat/
 .env
+.streamlit/secrets.toml
 
 
 # Cache

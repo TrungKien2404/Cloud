@@ -554,7 +554,8 @@ class StockModelTrainer:
         self.print_model_comparison()
         
         # Step 6: Save models
-        saved_models = self.save_all_models()
+        # self.save_all_models() # Tắt tính năng lưu lịch sử tệp nháp có timestamp để tránh tràn bộ nhớ
+        saved_models = {}
         self.save_best_model_as_latest()
         
         logger.info("=" * 70)

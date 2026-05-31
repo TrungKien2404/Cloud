@@ -123,12 +123,12 @@ def main():
     print(f"{Colors.OKCYAN}{Colors.BOLD}🚀 Launching Backend & Frontend Concurrently...{Colors.ENDC}")
     print(f"{Colors.OKCYAN}{Colors.BOLD}===================================================================={Colors.ENDC}\n")
     
-    # Define execution commands using the correct python interpreter
+    # Define execution commands
     backend_cmd = [sys.executable, "-m", "uvicorn", "api.api_service:app", "--host", "127.0.0.1", "--port", "8000"]
-    frontend_cmd = [sys.executable, "-m", "streamlit", "run", "dashboard/dashboard.py", "--server.port", "8501", "--server.address", "127.0.0.1"]
+    frontend_cmd = ["npm", "run", "dev"]
     
     print(f"{Colors.BOLD}API Server:{Colors.ENDC} Port 8000 (swagger docs at http://127.0.0.1:8000/docs)")
-    print(f"{Colors.BOLD}Streamlit Dashboard:{Colors.ENDC} Port 8501 (url: http://127.0.0.1:8501)")
+    print(f"{Colors.BOLD}React Frontend:{Colors.ENDC} Port 5173 (url: http://localhost:5173)")
     print(f"{Colors.WARNING}Press Ctrl+C to terminate both servers concurrently.{Colors.ENDC}\n")
     
     # Start subprocesses
@@ -150,13 +150,15 @@ def main():
     
     frontend_proc = subprocess.Popen(
         frontend_cmd,
+        cwd="frontend-react",
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
         encoding='utf-8',
         errors='replace',
-        env=env
+        env=env,
+        shell=sys.platform.startswith("win")
     )
     
     # Start logging threads
@@ -178,7 +180,7 @@ def main():
                 
         # Wait a moment for gentle termination, force kill if they persist
         time.sleep(1.5)
-        for p, name in [(backend_proc, "API"), (frontend_proc, "Streamlit")]:
+        for p, name in [(backend_proc, "API"), (frontend_proc, "React")]:
             if p.poll() is None:
                 print(f"  Force stopping {name} server...")
                 p.kill()
@@ -201,7 +203,7 @@ def main():
                 print(f"\n{Colors.FAIL}❌ Backend API Server exited unexpectedly with code {bp_status}!{Colors.ENDC}")
                 shutdown_servers(None, None)
             if fp_status is not None:
-                print(f"\n{Colors.FAIL}❌ Streamlit Frontend exited unexpectedly with code {fp_status}!{Colors.ENDC}")
+                print(f"\n{Colors.FAIL}❌ React Frontend exited unexpectedly with code {fp_status}!{Colors.ENDC}")
                 shutdown_servers(None, None)
                 
             time.sleep(1.0)

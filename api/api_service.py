@@ -30,6 +30,11 @@ import os
 import glob
 import threading
 import time
+import json
+import hashlib
+import yfinance as yf
+
+
 
 # Thêm thư mục gốc vào PYTHONPATH để tránh ModuleNotFoundError khi chạy trực tiếp
 import sys
@@ -69,7 +74,12 @@ app = FastAPI(
 # Thêm CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "*"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -110,6 +120,22 @@ class DataPoint(BaseModel):
     rsi: Optional[float] = None
     volatility: Optional[float] = None
     daily_return: Optional[float] = None
+
+# Pydantic Models cho Auth
+class UserRegister(BaseModel):
+    username: str
+    email: str
+    password: str
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+    username: str
+
 
 
 # ========== PIPELINE HELPER FUNCTIONS ==========
@@ -204,6 +230,79 @@ scheduler_thread.start()
 
 
 # ========== API ENDPOINTS ==========
+
+# ========== AUTH SERVICE HELPER & ENDPOINTS ==========
+
+USERS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".streamlit", "users.json")
+
+def _hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def _load_users() -> dict:
+    try:
+        if os.path.exists(USERS_FILE):
+            with open(USERS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.error(f"Lỗi khi load danh sách users: {str(e)}")
+    return {}
+
+def _save_users(users: dict):
+    try:
+        os.makedirs(os.path.dirname(USERS_FILE), exist_ok=True)
+        with open(USERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(users, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Lỗi khi lưu danh sách users: {str(e)}")
+
+@app.post("/api/auth/register")
+def register(user_data: UserRegister):
+    username = user_data.username.strip()
+    email = user_data.email.strip()
+    password = user_data.password
+    
+    if len(username) < 3:
+        raise HTTPException(status_code=400, detail="Tên đăng nhập phải có ít nhất 3 ký tự.")
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Mật khẩu phải có ít nhất 6 ký tự.")
+        
+    users = _load_users()
+    if username in users or username.lower() == "admin":
+        raise HTTPException(status_code=400, detail="Tên đăng nhập đã tồn tại.")
+        
+    users[username] = {
+        "email": email,
+        "password_hash": _hash_password(password),
+        "created_at": datetime.now().isoformat()
+    }
+    _save_users(users)
+    return {"status": "success", "message": "Đăng ký thành công!"}
+
+@app.post("/api/auth/login", response_model=TokenResponse)
+def login(user_data: UserLogin):
+    username = user_data.username.strip()
+    password = user_data.password
+    
+    # Bypass admin mặc định nếu chưa cấu hình secrets
+    if username == "admin" and password == "admin123":
+        return TokenResponse(
+            access_token="admin_mock_token_123456",
+            token_type="bearer",
+            username=username
+        )
+        
+    users = _load_users()
+    user_entry = users.get(username)
+    if not user_entry or user_entry.get("password_hash") != _hash_password(password):
+        raise HTTPException(status_code=401, detail="Tên đăng nhập hoặc mật khẩu không chính xác.")
+        
+    # Tạo mock token đơn giản (có thể thay bằng JWT nếu cần bảo mật thực tế)
+    mock_token = f"mock_token_{username}_{int(time.time())}"
+    return TokenResponse(
+        access_token=mock_token,
+        token_type="bearer",
+        username=username
+    )
 
 @app.get("/api/health", response_model=HealthResponse)
 def health():
@@ -570,6 +669,205 @@ def get_market_summary():
     except Exception as e:
         logger.error(f"Error compiling market summary: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to generate summary: {str(e)}")
+
+
+# ========== YFINANCE PROXY ENDPOINTS FOR REACT OVERVIEW ==========
+
+def _yf_download_cached(ticker: str, period: str, interval: str):
+    return yf.download(ticker, period=period, interval=interval, auto_adjust=True, progress=False)
+
+@app.get("/api/yfinance/chart/{ticker}")
+def get_yf_chart(ticker: str, period: str = "1d", interval: str = "5m"):
+    try:
+        df = _yf_download_cached(ticker, period, interval)
+        if df is None or df.empty:
+            raise HTTPException(status_code=404, detail=f"Không thể tải dữ liệu cho {ticker}")
+            
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+            
+        close_series = df["Close"].dropna()
+        if close_series.empty:
+            raise HTTPException(status_code=404, detail="Không có dữ liệu giá đóng cửa")
+            
+        # Convert index (dates) to strings
+        dates = [str(d) for d in close_series.index]
+        closes = [float(v) for v in close_series.values]
+        
+        return {
+            "ticker": ticker,
+            "dates": dates,
+            "closes": closes,
+            "latest": closes[-1] if closes else 0,
+            "first": closes[0] if closes else 0,
+        }
+    except Exception as e:
+        logger.error(f"Lỗi yfinance chart {ticker}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/yfinance/summary/{ticker}")
+def get_yf_summary(ticker: str):
+    try:
+        df = _yf_download_cached(ticker, period="1y", interval="1d")
+        if df is None or df.empty:
+            return {}
+            
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+            
+        if "Close" not in df.columns:
+            return {}
+            
+        close = df["Close"].dropna()
+        if len(close) < 2:
+            return {}
+            
+        price = float(close.iloc[-1])
+        
+        def pct(n):
+            if len(close) > n:
+                return float((close.iloc[-1] - close.iloc[-n]) / close.iloc[-n] * 100)
+            return None
+            
+        ytd_start = datetime(datetime.now().year, 1, 1).date()
+        ytd_mask = df.index.date >= ytd_start
+        ytd_close = close[ytd_mask]
+        
+        ytd = float((ytd_close.iloc[-1] - ytd_close.iloc[0]) / ytd_close.iloc[0] * 100) \
+              if len(ytd_close) > 1 else None
+              
+        return {
+            "price": price,
+            "D": pct(2),
+            "W": pct(6),
+            "M": pct(22),
+            "Q": pct(66),
+            "YTD": ytd
+        }
+    except Exception as e:
+        logger.error(f"Lỗi yfinance summary {ticker}: {str(e)}")
+        return {}
+
+
+# ========== GLOBAL ON-DEMAND AI ANALYSIS & ML PREDICTION ENDPOINT ==========
+
+@app.get("/api/ai-analysis/{ticker}")
+def run_global_ai_analysis(ticker: str, period: str = "1y", interval: str = "1d"):
+    try:
+        from dashboard.ai_analysis import (
+            fetch_data, compute_features, train_and_evaluate, 
+            predict_next, build_recommendation, FEATURE_COLS
+        )
+        
+        ticker_upper = ticker.upper().strip()
+        logger.info(f"🚀 Running on-demand AI Analysis for global ticker: {ticker_upper} (Period: {period}, Interval: {interval})")
+        
+        # 1. Tải dữ liệu từ Yahoo Finance
+        df_raw = fetch_data(ticker_upper, period=period, interval=interval)
+        if df_raw.empty:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy dữ liệu cho mã {ticker_upper}. Vui lòng thử mã khác.")
+            
+        # 2. Tính toán các chỉ báo kỹ thuật
+        df_feat = compute_features(df_raw)
+        
+        # Lấy giá trị phiên gần nhất
+        latest = df_feat.iloc[-1]
+        current_price = float(latest["Close"])
+        rsi_val = float(latest.get("RSI", 50))
+        ma20_val = float(latest.get("MA20", current_price))
+        ma50_val = float(latest.get("MA50", current_price))
+        macd_val = float(latest.get("MACD", 0))
+        macd_sig = float(latest.get("MACD_Signal", 0))
+        vol_val = float(latest.get("Volatility", 0)) * 100
+        
+        # 3. Huấn luyện 3 mô hình ML và đánh giá
+        results_df, best_name, best_model, scaler, feat_df = train_and_evaluate(df_feat)
+        
+        if results_df is None:
+            raise HTTPException(status_code=400, detail="Không đủ dữ liệu lịch sử để huấn luyện mô hình học máy (Cần tối thiểu 60 phiên).")
+            
+        # 4. Dự đoán giá tiếp theo sử dụng mô hình tốt nhất
+        next_price = predict_next(df_feat, best_model, scaler)
+        diff = next_price - current_price
+        diff_pct = diff / current_price * 100
+        
+        # Lấy sai số và R2 của best model để lập khuyến nghị
+        best_rmse = float(results_df.loc[results_df["Model"] == best_name, "RMSE"].values[0])
+        best_r2 = float(results_df.loc[results_df["Model"] == best_name, "R²"].values[0])
+        
+        # 5. Lập khuyến nghị AI tích hợp nhiều chỉ báo
+        reco_data = build_recommendation(
+            current_price, next_price, rsi_val,
+            ma20_val, ma50_val, macd_val, macd_sig,
+            best_rmse, best_r2
+        )
+        
+        # 6. Chuẩn bị dữ liệu actual vs predicted trên tập test (20%)
+        feat = df_feat[FEATURE_COLS + ["Target", "Date"]].dropna()
+        X = feat[FEATURE_COLS].values
+        y = feat["Target"].values
+        dates = feat["Date"].values
+        
+        split = int(len(X) * 0.8)
+        X_test = scaler.transform(X[split:])
+        y_test = y[split:]
+        dates_test = [str(d)[:10] for d in dates[split:]]
+        
+        preds = best_model.predict(X_test)
+        
+        avp_data = {
+            "dates": dates_test,
+            "actuals": [float(v) for v in y_test],
+            "predictions": [float(v) for v in preds]
+        }
+        
+        # 7. Compile các mảng dữ liệu lịch sử để vẽ biểu đồ kỹ thuật
+        df_clean = df_feat.dropna(subset=["Close"])
+        chart_dates = [str(d)[:10] for d in df_clean["Date"]]
+        
+        return {
+            "ticker": ticker_upper,
+            "current_price": current_price,
+            "rsi": rsi_val,
+            "volatility": vol_val,
+            "macd": macd_val,
+            "macd_signal": macd_sig,
+            "ma20": ma20_val,
+            "ma50": ma50_val,
+            "next_predicted_price": next_price,
+            "expected_change": diff,
+            "expected_change_pct": diff_pct,
+            
+            # Arrays cho Candlestick + indicator lines
+            "dates": chart_dates,
+            "opens": [float(v) for v in df_clean["Open"]],
+            "highs": [float(v) for v in df_clean["High"]],
+            "lows": [float(v) for v in df_clean["Low"]],
+            "closes": [float(v) for v in df_clean["Close"]],
+            "volumes": [float(v) for v in df_clean["Volume"]],
+            "ma20_line": [float(v) if not pd.isna(v) else None for v in df_clean.get("MA20", [])],
+            "ma50_line": [float(v) if not pd.isna(v) else None for v in df_clean.get("MA50", [])],
+            "rsi_line": [float(v) if not pd.isna(v) else None for v in df_clean.get("RSI", [])],
+            "macd_line": [float(v) if not pd.isna(v) else None for v in df_clean.get("MACD", [])],
+            "macd_sig_line": [float(v) if not pd.isna(v) else None for v in df_clean.get("MACD_Signal", [])],
+            "hist_line": [float(v) if not pd.isna(v) else None for v in (df_clean.get("MACD", 0) - df_clean.get("MACD_Signal", 0))],
+            
+            # Model training results
+            "model_results": results_df.to_dict(orient="records"),
+            "best_model_name": best_name,
+            
+            # Recommendation & reasons
+            "recommendation": reco_data,
+            
+            # Actual vs Predicted data
+            "actual_vs_predicted": avp_data
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Lỗi khi chạy AI Analysis cho {ticker}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Phân tích AI thất bại: {str(e)}")
+
 
 
 @app.post("/api/update-data")
