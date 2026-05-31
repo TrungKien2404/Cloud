@@ -112,8 +112,127 @@ def log_reader(pipe, prefix, color):
     finally:
         pipe.close()
 
+def ensure_ollama():
+    """Tự động kiểm tra, tải, cài đặt và khởi động Ollama cùng mô hình qwen2.5:1.5b cục bộ."""
+    print(f"\n{Colors.OKCYAN}{Colors.BOLD}🔍 Đang kiểm tra trợ lý AI cục bộ (Ollama)...{Colors.ENDC}")
+    
+    # 1. Kiểm tra xem Ollama có sẵn trong PATH không
+    ollama_installed = False
+    try:
+        res = subprocess.run(["where", "ollama"], capture_output=True, text=True)
+        if res.returncode == 0:
+            ollama_installed = True
+    except Exception:
+        pass
+        
+    # Kiểm tra đường dẫn mặc định trên Windows nếu lệnh 'where' thất bại
+    local_appdata = os.getenv("LOCALAPPDATA", "")
+    default_exe = os.path.join(local_appdata, "Programs", "Ollama", "ollama.exe")
+    if not ollama_installed and os.path.exists(default_exe):
+        ollama_installed = True
+        os.environ["PATH"] += os.pathsep + os.path.dirname(default_exe)
+        
+    # 2. Nếu chưa cài đặt -> Tải và cài đặt tự động
+    if not ollama_installed:
+        print(f"{Colors.WARNING}⚠️ Trợ lý AI cục bộ (Ollama) chưa được cài đặt trên hệ thống.{Colors.ENDC}")
+        print(f"{Colors.OKBLUE}📥 Đang tự động tải bộ cài đặt OllamaSetup.exe từ trang chủ (ollama.com)...{Colors.ENDC}")
+        
+        installer_path = "OllamaSetup.exe"
+        try:
+            import urllib.request
+            url = "https://ollama.com/download/OllamaSetup.exe"
+            
+            # Hiển thị tiến trình tải
+            def report_progress(block_num, block_size, total_size):
+                percent = int(block_num * block_size * 100 / total_size)
+                percent = min(100, percent)
+                sys.stdout.write(f"\r  Đang tải: {percent}% [{(block_num*block_size)/(1024*1024):.1f} MB / {total_size/(1024*1024):.1f} MB]")
+                sys.stdout.flush()
+                
+            urllib.request.urlretrieve(url, installer_path, report_progress)
+            print(f"\n{Colors.OKGREEN}✓ Tải bộ cài thành công! Đang tự động cài đặt chế độ im lặng (Silent Setup)...{Colors.ENDC}")
+            
+            # Cài đặt silent mode (mất khoảng 5-10 giây)
+            subprocess.run([installer_path, "/silent"], check=True)
+            print(f"{Colors.OKGREEN}✓ Cài đặt Ollama thành công!{Colors.ENDC}")
+            
+            # Xóa file installer sau khi cài đặt xong
+            if os.path.exists(installer_path):
+                os.remove(installer_path)
+                
+            if os.path.exists(default_exe):
+                os.environ["PATH"] += os.pathsep + os.path.dirname(default_exe)
+                ollama_installed = True
+                
+        except Exception as e:
+            print(f"\n{Colors.FAIL}❌ Lỗi tải/cài đặt Ollama: {str(e)}{Colors.ENDC}")
+            print(f"{Colors.WARNING}👉 Vui lòng tải và cài đặt thủ công tại: https://ollama.com{Colors.ENDC}")
+            return
+            
+    # 3. Kiểm tra xem Ollama đã chạy chưa
+    import requests
+    ollama_running = False
+    try:
+        r = requests.get("http://localhost:11434/api/tags", timeout=1.0)
+        if r.status_code == 200:
+            ollama_running = True
+    except Exception:
+        pass
+        
+    # 4. Nếu chưa chạy -> Tự động khởi động ngầm
+    if not ollama_running:
+        print(f"{Colors.OKBLUE}🚀 Trợ lý AI đang tắt. Đang tự động khởi chạy tiến trình Ollama ngầm...{Colors.ENDC}")
+        try:
+            # Chạy 'ollama serve' ngầm không hiển thị cửa sổ CMD (creationflags=0x08000000)
+            if sys.platform.startswith("win"):
+                subprocess.Popen(["ollama", "serve"], creationflags=0x08000000, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+            # Chờ Ollama khởi động
+            for i in range(12):
+                time.sleep(1.0)
+                try:
+                    r = requests.get("http://localhost:11434/api/tags", timeout=1.0)
+                    if r.status_code == 200:
+                        ollama_running = True
+                        print(f"  {Colors.OKGREEN}✓{Colors.ENDC} Trợ lý AI cục bộ đã được kích hoạt thành công!")
+                        break
+                except:
+                    pass
+            if not ollama_running:
+                print(f"{Colors.WARNING}⚠️ Trợ lý AI khởi động chậm. Có thể bạn cần chạy ứng dụng Ollama thủ công.{Colors.ENDC}")
+        except Exception as e:
+            print(f"{Colors.FAIL}❌ Không thể kích hoạt Ollama ngầm: {str(e)}{Colors.ENDC}")
+            
+    # 5. Kiểm tra mô hình qwen2.5:1.5b và tải nếu thiếu
+    if ollama_running:
+        print(f"{Colors.BOLD}🔍 Đang kiểm tra mô hình ngôn ngữ 'qwen2.5:1.5b'...{Colors.ENDC}")
+        has_model = False
+        try:
+            r = requests.get("http://localhost:11434/api/tags", timeout=1.5)
+            if r.status_code == 200:
+                models = [m.get("name") for m in r.json().get("models", [])]
+                if any("qwen2.5:1.5b" in m for m in models):
+                    has_model = True
+                    print(f"  {Colors.OKGREEN}✓{Colors.ENDC} Mô hình 'qwen2.5:1.5b' đã sẵn sàng.")
+        except Exception:
+            pass
+            
+        if not has_model:
+            print(f"{Colors.WARNING}⚠️ Thiếu mô hình 'qwen2.5:1.5b'. Đang tải tự động từ thư viện Ollama...{Colors.ENDC}")
+            print(f"{Colors.BOLD}Tiến trình tải mô hình (Lưu ý: Chỉ tải duy nhất 1 lần đầu tiên):{Colors.ENDC}")
+            try:
+                subprocess.run(["ollama", "pull", "qwen2.5:1.5b"], check=True)
+                print(f"{Colors.OKGREEN}✓ Tải mô hình 'qwen2.5:1.5b' thành công!{Colors.ENDC}")
+            except Exception as e:
+                print(f"{Colors.FAIL}❌ Không thể tải mô hình tự động: {str(e)}{Colors.ENDC}")
+
 def main():
     print_banner()
+    
+    # Tự động cài đặt và cấu hình AI cục bộ
+    ensure_ollama()
     
     # Step A: Validate pipeline is ready
     check_pipeline_dependencies()

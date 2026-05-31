@@ -1,5 +1,5 @@
 import React from 'react';
-import { TrendingUp, BarChart3, ArrowLeftRight, LogOut, User, RefreshCw } from 'lucide-react';
+import { TrendingUp, BarChart3, ArrowLeftRight, LogOut, User, RefreshCw, MessageSquare } from 'lucide-react';
 import api from '../api';
 
 interface SidebarProps {
@@ -17,6 +17,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, username, 
     { id: 'overview', name: 'Tổng quan thị trường', icon: BarChart3 },
     { id: 'analysis', name: 'Phân Tích & AI Dự Báo', icon: TrendingUp },
     { id: 'compare', name: 'Thị Trường & So Sánh', icon: ArrowLeftRight },
+    { id: 'chat', name: 'Trợ Lý AI Chat', icon: MessageSquare },
   ];
 
   const handleSystemUpdate = async () => {

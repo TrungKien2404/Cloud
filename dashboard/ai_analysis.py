@@ -31,6 +31,7 @@ def fetch_data(ticker: str, period: str = "1y", interval: str = "1d") -> pd.Data
 
         if isinstance(raw.columns, pd.MultiIndex):
             raw.columns = raw.columns.get_level_values(0)
+        raw = raw.loc[:, ~raw.columns.duplicated()]
 
         raw.reset_index(inplace=True)
 
@@ -397,13 +398,45 @@ def render_ai_analysis_section():
     inp1, inp2, inp3, inp4 = st.columns([2, 1, 1, 1])
 
     with inp1:
-        ticker_input = st.text_input(
+        raw_ticker = st.text_input(
             "Ticker",
             value="AAPL",
             placeholder="VD: AAPL, TSLA, BTC-USD, FPT.VN",
             help="Nhập bất kỳ ticker hợp lệ trên Yahoo Finance",
             key="ai_ticker_input"
         ).strip().upper()
+        
+        # Smart mapping for commodities, currencies, and cryptocurrencies
+        ticker_input = raw_ticker
+        if raw_ticker:
+            # Cryptocurrencies
+            crypto_map = {
+                "BTC": "BTC-USD", "ETH": "ETH-USD", "BNB": "BNB-USD", "SOL": "SOL-USD",
+                "XRP": "XRP-USD", "ADA": "ADA-USD", "DOGE": "DOGE-USD", "DOT": "DOT-USD", "LTC": "LTC-USD"
+            }
+            # Commodities
+            commodity_map = {
+                "VANG": "GC=F", "GOLD": "GC=F", "GC": "GC=F",
+                "DAU": "CL=F", "OIL": "CL=F", "CL": "CL=F", "DUTHOT": "CL=F",
+                "BAC": "SI=F", "SILVER": "SI=F", "SI": "SI=F",
+                "DONG": "HG=F", "COPPER": "HG=F", "HG": "HG=F",
+                "GAS": "NG=F", "NG": "NG=F"
+            }
+            # Forex/Currencies
+            forex_map = {
+                "USDVND": "USDVND=X", "USD-VND": "USDVND=X", "USD/VND": "USDVND=X",
+                "EURUSD": "EURUSD=X", "EUR-USD": "EURUSD=X", "EUR/USD": "EURUSD=X",
+                "GBPUSD": "GBPUSD=X", "GBP-USD": "GBPUSD=X", "GBP/USD": "GBPUSD=X",
+                "USDJPY": "USDJPY=X", "USD-JPY": "USDJPY=X", "USD/JPY": "USDJPY=X",
+                "AUDUSD": "AUDUSD=X", "AUD-USD": "AUDUSD=X", "AUD/USD": "AUDUSD=X",
+                "USDCAD": "USDCAD=X", "USD-CAD": "USDCAD=X", "USD/CAD": "USDCAD=X"
+            }
+            if raw_ticker in crypto_map:
+                ticker_input = crypto_map[raw_ticker]
+            elif raw_ticker in commodity_map:
+                ticker_input = commodity_map[raw_ticker]
+            elif raw_ticker in forex_map:
+                ticker_input = forex_map[raw_ticker]
 
     with inp2:
         period = st.selectbox(

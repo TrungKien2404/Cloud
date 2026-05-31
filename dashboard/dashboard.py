@@ -28,6 +28,13 @@ except Exception as _mk_err:
     MARKET_MODULE_OK = False
     _MK_ERR_MSG = str(_mk_err)
 
+try:
+    from chat_assistant import render_chat_assistant, check_ollama_alive, get_installed_ollama_models
+    CHAT_MODULE_OK = True
+except Exception as _chat_err:
+    CHAT_MODULE_OK = False
+    _CHAT_ERR_MSG = str(_chat_err)
+
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 st.set_page_config(
@@ -195,6 +202,8 @@ def render_auth_page():
                 if check_login(username.strip(), password):
                     st.session_state["authenticated"] = True
                     st.session_state["username"] = username.strip()
+                    if "chat_messages" in st.session_state:
+                        del st.session_state["chat_messages"]
                     st.rerun()
                 else:
                     st.error("❌ Sai tên đăng nhập hoặc mật khẩu!")
@@ -416,7 +425,7 @@ st.sidebar.markdown(f"""
     margin-bottom: 4px;
 '>
     <span style='color:#94a3b8; font-size:12px;'>đăng nhập với</span><br>
-    <span style='color:#a5b4fc; font-size:16px; font-weight:700;'>👤 {current_user}</span>
+    <span style='color:#a5b4fc; font-size:16px; font-weight:700;'>{current_user}</span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -430,6 +439,7 @@ view_options = [
     "Tổng quan",
     "Phân Tích & AI Dự Báo",
     "Thị Trường & So Sánh",
+    "Trợ Lý AI Chat",
 ]
 
 for opt in view_options:
@@ -437,6 +447,53 @@ for opt in view_options:
     if st.sidebar.button(opt, key=f"nav_{opt}", use_container_width=True):
         st.session_state["current_view"] = opt
         st.rerun()
+
+# Cấu hình thân thiện cho AI Chat trong Sidebar
+if st.session_state["current_view"] == "Trợ Lý AI Chat":
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("<p style='font-size:16px; font-weight:700; color:#cbd5e1; margin-bottom:12px;'>Cài đặt AI Chat</p>", unsafe_allow_html=True)
+    
+    # 1. Bộ chọn chế độ phân tích thân thiện
+    analysis_mode_friendly = st.sidebar.radio(
+        "Chế độ phân tích:",
+        ["Phân tích nhanh", "Phân tích thông minh"],
+        index=0,
+        help="Chọn chế độ phân tích tài chính phù hợp với nhu cầu của bạn."
+    )
+    analysis_mode = "Nhanh" if "Nhanh" in analysis_mode_friendly else "Thông minh"
+    st.session_state["chat_analysis_mode"] = analysis_mode
+    
+    # 2. Thu gọn thông tin kỹ thuật trong expander nâng cao
+    with st.sidebar.expander("Cấu hình nâng cao"):
+        st.markdown("<p style='font-size:12px; font-weight:600; margin:0; color:#94a3b8;'>Trạng thái trợ lý cục bộ:</p>", unsafe_allow_html=True)
+        is_ollama_ready = check_ollama_alive() if CHAT_MODULE_OK else False
+        if is_ollama_ready:
+            st.markdown("<p style='font-size:14px; color:#22c55e; font-weight:700; margin:0 0 10px 0;'>Sẵn sàng</p>", unsafe_allow_html=True)
+            installed_models = get_installed_ollama_models() if CHAT_MODULE_OK else []
+            selected_model = st.selectbox(
+                "Mô hình AI cục bộ:",
+                installed_models,
+                index=0 if "qwen2.5:1.5b" not in installed_models else installed_models.index("qwen2.5:1.5b")
+            )
+            st.session_state["chat_selected_model"] = selected_model
+        else:
+            st.markdown("<p style='font-size:14px; color:#ef4444; font-weight:700; margin:0 0 10px 0;'>Chưa sẵn sàng</p>", unsafe_allow_html=True)
+            st.session_state["chat_selected_model"] = "qwen2.5:1.5b"
+            st.markdown("""
+            <p style='font-size:11px; color:#94a3b8; line-height:1.5; margin:0;'>
+                Chế độ <b>Phân tích thông minh</b> yêu cầu trợ lý AI cục bộ chạy trên máy của bạn.<br><br>
+                <b>Cách kích hoạt trợ lý:</b><br>
+                1. Khởi động ứng dụng <b>Ollama</b>.<br>
+                2. Chạy lệnh CMD tải mô hình:<br>
+                <code style='background:rgba(255,255,255,0.08); padding:2px 4px; border-radius:3px; color:#fca5a5;'>ollama run qwen2.5:1.5b</code>
+            </p>
+            """, unsafe_allow_html=True)
+else:
+    # Thiết lập mặc định khi đang ở tab khác
+    if "chat_analysis_mode" not in st.session_state:
+        st.session_state["chat_analysis_mode"] = "Nhanh"
+    if "chat_selected_model" not in st.session_state:
+        st.session_state["chat_selected_model"] = "qwen2.5:1.5b"
 
 # Apply button styles
 st.sidebar.markdown("""
@@ -497,6 +554,8 @@ st.sidebar.markdown("""
 if st.sidebar.button("🚪 Đăng xuất", use_container_width=True, key="logout_btn"):
     st.session_state["authenticated"] = False
     st.session_state["username"] = ""
+    if "chat_messages" in st.session_state:
+        del st.session_state["chat_messages"]
     st.rerun()
 
 
@@ -674,3 +733,19 @@ elif view == "Thị Trường & So Sánh":
             st.plotly_chart(fig_h, width="stretch")
         else:
             st.info("Không đủ dữ liệu để vẽ Correlation Heatmap.")
+
+
+# =======================================================================
+#  VIEW 4: TRỢ LÝ AI CHAT
+# =======================================================================
+
+elif view == "Trợ Lý AI Chat":
+    if not CHAT_MODULE_OK:
+        st.error(f"Không tải được module Trợ Lý AI Chat: {_CHAT_ERR_MSG}")
+    else:
+        # Lấy cấu hình từ session
+        analysis_mode = st.session_state.get("chat_analysis_mode", "Nhanh")
+        selected_model = st.session_state.get("chat_selected_model", "qwen2.5:1.5b")
+        
+        # Render Chat Assistant
+        render_chat_assistant(analysis_mode, selected_model)

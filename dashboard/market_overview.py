@@ -17,102 +17,201 @@ warnings.filterwarnings("ignore")
 # Lưu ý: Yahoo Finance không hỗ trợ các chỉ số VN (^VNINDEX, ^HNX...)
 # → dùng cổ phiếu VN30 với hậu tố .VN thay thế
 
-REGIONS = {
-    "Việt Nam": {
-        "chart_ticker": "FPT.VN",
-        "chart_name":   "FPT",
-        "indices": [
-            {"name": "FPT",  "ticker": "FPT.VN"},
-            {"name": "VIC",  "ticker": "VIC.VN"},
-            {"name": "HPG",  "ticker": "HPG.VN"},
-            {"name": "VHM",  "ticker": "VHM.VN"},
-            {"name": "VCB",  "ticker": "VCB.VN"},
-            {"name": "TCB",  "ticker": "TCB.VN"},
-            {"name": "VNM",  "ticker": "VNM.VN"},
-            {"name": "MWG",  "ticker": "MWG.VN"},
-            {"name": "CTG",  "ticker": "CTG.VN"},
-            {"name": "HDB",  "ticker": "HDB.VN"},
-            {"name": "MSN",  "ticker": "MSN.VN"},
-            {"name": "VPB",  "ticker": "VPB.VN"},
-            {"name": "BID",  "ticker": "BID.VN"},
-            {"name": "GAS",  "ticker": "GAS.VN"},
-            {"name": "SAB",  "ticker": "SAB.VN"},
-            {"name": "SSI",  "ticker": "SSI.VN"},
-            {"name": "PLX",  "ticker": "PLX.VN"},
-            {"name": "MBB",  "ticker": "MBB.VN"},
-            {"name": "POW",  "ticker": "POW.VN"},
-            {"name": "PNJ",  "ticker": "PNJ.VN"},
-        ],
+ALL_CATEGORIES_DATA = {
+    "Chứng khoán": {
+        "Việt Nam": {
+            "chart_ticker": "FPT.VN",
+            "chart_name":   "FPT",
+            "indices": [
+                {"name": "FPT",  "ticker": "FPT.VN"},
+                {"name": "VIC",  "ticker": "VIC.VN"},
+                {"name": "HPG",  "ticker": "HPG.VN"},
+                {"name": "VHM",  "ticker": "VHM.VN"},
+                {"name": "VCB",  "ticker": "VCB.VN"},
+                {"name": "TCB",  "ticker": "TCB.VN"},
+                {"name": "VNM",  "ticker": "VNM.VN"},
+                {"name": "MWG",  "ticker": "MWG.VN"},
+                {"name": "CTG",  "ticker": "CTG.VN"},
+                {"name": "HDB",  "ticker": "HDB.VN"},
+                {"name": "MSN",  "ticker": "MSN.VN"},
+                {"name": "VPB",  "ticker": "VPB.VN"},
+                {"name": "BID",  "ticker": "BID.VN"},
+                {"name": "GAS",  "ticker": "GAS.VN"},
+                {"name": "SAB",  "ticker": "SAB.VN"},
+                {"name": "SSI",  "ticker": "SSI.VN"},
+                {"name": "PLX",  "ticker": "PLX.VN"},
+                {"name": "MBB",  "ticker": "MBB.VN"},
+                {"name": "POW",  "ticker": "POW.VN"},
+                {"name": "PNJ",  "ticker": "PNJ.VN"},
+            ],
+        },
+        "Mỹ": {
+            "chart_ticker": "^GSPC",
+            "chart_name":   "S&P 500",
+            "indices": [
+                {"name": "S&P 500",      "ticker": "^GSPC"},
+                {"name": "Dow Jones",    "ticker": "^DJI"},
+                {"name": "NASDAQ",       "ticker": "^IXIC"},
+                {"name": "Russell 2000", "ticker": "^RUT"},
+                {"name": "VIX",          "ticker": "^VIX"},
+                {"name": "S&P 400",      "ticker": "^MID"},
+                {"name": "NYSE",         "ticker": "^NYA"},
+                {"name": "S&P 600",      "ticker": "^SML"},
+                {"name": "AAPL",         "ticker": "AAPL"},
+                {"name": "MSFT",         "ticker": "MSFT"},
+                {"name": "AMZN",         "ticker": "AMZN"},
+                {"name": "GOOGL",        "ticker": "GOOGL"},
+                {"name": "TSLA",         "ticker": "TSLA"},
+                {"name": "NVDA",         "ticker": "NVDA"},
+                {"name": "META",         "ticker": "META"},
+                {"name": "NFLX",         "ticker": "NFLX"},
+                {"name": "BRK-B",        "ticker": "BRK-B"},
+                {"name": "JPM",          "ticker": "JPM"},
+                {"name": "V",            "ticker": "V"},
+                {"name": "UNH",          "ticker": "UNH"},
+            ],
+        },
+        "Châu Âu": {
+            "chart_ticker": "^STOXX50E",
+            "chart_name":   "Euro Stoxx 50",
+            "indices": [
+                {"name": "Euro Stoxx 50", "ticker": "^STOXX50E"},
+                {"name": "FTSE 100",      "ticker": "^FTSE"},
+                {"name": "DAX",           "ticker": "^GDAXI"},
+                {"name": "CAC 40",        "ticker": "^FCHI"},
+                {"name": "IBEX 35",       "ticker": "^IBEX"},
+                {"name": "AEX",           "ticker": "^AEX"},
+                {"name": "SMI",           "ticker": "^SSMI"},
+                {"name": "BEL 20",        "ticker": "^BFX"},
+                {"name": "OMX 30",        "ticker": "^OMX"},
+                {"name": "LVMH",          "ticker": "MC.PA"},
+                {"name": "SAP",           "ticker": "SAP"},
+                {"name": "ASML",          "ticker": "ASML"},
+                {"name": "Nestlé",        "ticker": "NESN.SW"},
+                {"name": "Siemens",       "ticker": "SIE.DE"},
+                {"name": "Volkswagen",    "ticker": "VOW3.DE"},
+            ],
+        },
+        "Châu Á": {
+            "chart_ticker": "^N225",
+            "chart_name":   "Nikkei 225",
+            "indices": [
+                {"name": "Nikkei 225",    "ticker": "^N225"},
+                {"name": "Hang Seng",     "ticker": "^HSI"},
+                {"name": "Shanghai",      "ticker": "000001.SS"},
+                {"name": "Kospi",         "ticker": "^KS11"},
+                {"name": "STI",           "ticker": "^STI"},
+                {"name": "ASX 200",       "ticker": "^AXJO"},
+                {"name": "Nifty 50",      "ticker": "^NSEI"},
+                {"name": "Sensex",        "ticker": "^BSESN"},
+                {"name": "Toyota",        "ticker": "7203.T"},
+                {"name": "Sony",          "ticker": "6758.T"},
+                {"name": "Samsung",       "ticker": "005930.KS"},
+                {"name": "Alibaba",       "ticker": "9988.HK"},
+                {"name": "Tencent",       "ticker": "0700.HK"},
+                {"name": "Meituan",       "ticker": "3690.HK"},
+                {"name": "BYD",           "ticker": "1211.HK"},
+            ],
+        },
     },
-    "Mỹ": {
-        "chart_ticker": "^GSPC",
-        "chart_name":   "S&P 500",
-        "indices": [
-            {"name": "S&P 500",      "ticker": "^GSPC"},
-            {"name": "Dow Jones",    "ticker": "^DJI"},
-            {"name": "NASDAQ",       "ticker": "^IXIC"},
-            {"name": "Russell 2000", "ticker": "^RUT"},
-            {"name": "VIX",          "ticker": "^VIX"},
-            {"name": "S&P 400",      "ticker": "^MID"},
-            {"name": "NYSE",         "ticker": "^NYA"},
-            {"name": "S&P 600",      "ticker": "^SML"},
-            {"name": "AAPL",         "ticker": "AAPL"},
-            {"name": "MSFT",         "ticker": "MSFT"},
-            {"name": "AMZN",         "ticker": "AMZN"},
-            {"name": "GOOGL",        "ticker": "GOOGL"},
-            {"name": "TSLA",         "ticker": "TSLA"},
-            {"name": "NVDA",         "ticker": "NVDA"},
-            {"name": "META",         "ticker": "META"},
-            {"name": "NFLX",         "ticker": "NFLX"},
-            {"name": "BRK-B",        "ticker": "BRK-B"},
-            {"name": "JPM",          "ticker": "JPM"},
-            {"name": "V",            "ticker": "V"},
-            {"name": "UNH",          "ticker": "UNH"},
-        ],
+    "Hàng hóa": {
+        "Kim loại": {
+            "chart_ticker": "GC=F",
+            "chart_name":   "Vàng (Gold)",
+            "indices": [
+                {"name": "Vàng (Gold)",  "ticker": "GC=F"},
+                {"name": "Bạc (Silver)", "ticker": "SI=F"},
+                {"name": "Đồng (Copper)", "ticker": "HG=F"},
+                {"name": "Bạch kim (Platinum)", "ticker": "PL=F"},
+                {"name": "Paladi (Palladium)", "ticker": "PA=F"},
+            ],
+        },
+        "Năng lượng": {
+            "chart_ticker": "CL=F",
+            "chart_name":   "Dầu thô WTI",
+            "indices": [
+                {"name": "Dầu thô WTI",  "ticker": "CL=F"},
+                {"name": "Dầu Brent", "ticker": "BZ=F"},
+                {"name": "Khí tự nhiên (Gas)", "ticker": "NG=F"},
+                {"name": "Xăng RBOB", "ticker": "RB=F"},
+                {"name": "Dầu sưởi (Heating Oil)", "ticker": "HO=F"},
+            ],
+        },
+        "Nông sản": {
+            "chart_ticker": "ZC=F",
+            "chart_name":   "Ngô (Corn)",
+            "indices": [
+                {"name": "Ngô (Corn)",  "ticker": "ZC=F"},
+                {"name": "Lúa mì (Wheat)", "ticker": "ZW=F"},
+                {"name": "Đậu tương (Soybeans)", "ticker": "ZS=F"},
+                {"name": "Cà phê (Coffee)", "ticker": "KC=F"},
+                {"name": "Đường (Sugar)", "ticker": "SB=F"},
+                {"name": "Bông (Cotton)", "ticker": "CT=F"},
+                {"name": "Ca cao (Cocoa)", "ticker": "CC=F"},
+            ],
+        },
     },
-    "Châu Âu": {
-        "chart_ticker": "^STOXX50E",
-        "chart_name":   "Euro Stoxx 50",
-        "indices": [
-            {"name": "Euro Stoxx 50", "ticker": "^STOXX50E"},
-            {"name": "FTSE 100",      "ticker": "^FTSE"},
-            {"name": "DAX",           "ticker": "^GDAXI"},
-            {"name": "CAC 40",        "ticker": "^FCHI"},
-            {"name": "IBEX 35",       "ticker": "^IBEX"},
-            {"name": "AEX",           "ticker": "^AEX"},
-            {"name": "SMI",           "ticker": "^SSMI"},
-            {"name": "BEL 20",        "ticker": "^BFX"},
-            {"name": "OMX 30",        "ticker": "^OMX"},
-            {"name": "LVMH",          "ticker": "MC.PA"},
-            {"name": "SAP",           "ticker": "SAP"},
-            {"name": "ASML",          "ticker": "ASML"},
-            {"name": "Nestlé",        "ticker": "NESN.SW"},
-            {"name": "Siemens",       "ticker": "SIE.DE"},
-            {"name": "Volkswagen",    "ticker": "VOW3.DE"},
-        ],
+    "Tiền tệ": {
+        "Tỷ giá VND": {
+            "chart_ticker": "USDVND=X",
+            "chart_name":   "USD / VND",
+            "indices": [
+                {"name": "USD / VND",  "ticker": "USDVND=X"},
+                {"name": "EUR / VND", "ticker": "EURVND=X"},
+                {"name": "JPY / VND", "ticker": "JPYVND=X"},
+                {"name": "GBP / VND", "ticker": "GBPVND=X"},
+                {"name": "SGD / VND", "ticker": "SGDVND=X"},
+                {"name": "AUD / VND", "ticker": "AUDVND=X"},
+                {"name": "CAD / VND", "ticker": "CADVND=X"},
+            ],
+        },
+        "Tỷ giá Quốc tế": {
+            "chart_ticker": "EURUSD=X",
+            "chart_name":   "EUR / USD",
+            "indices": [
+                {"name": "EUR / USD",  "ticker": "EURUSD=X"},
+                {"name": "GBP / USD", "ticker": "GBPUSD=X"},
+                {"name": "USD / JPY", "ticker": "USDJPY=X"},
+                {"name": "AUD / USD", "ticker": "AUDUSD=X"},
+                {"name": "USD / CAD", "ticker": "USDCAD=X"},
+                {"name": "USD / CHF", "ticker": "USDCHF=X"},
+                {"name": "EUR / GBP", "ticker": "EURGBP=X"},
+                {"name": "EUR / JPY", "ticker": "EURJPY=X"},
+                {"name": "GBP / JPY", "ticker": "GBPJPY=X"},
+            ],
+        },
     },
-    "Châu Á": {
-        "chart_ticker": "^N225",
-        "chart_name":   "Nikkei 225",
-        "indices": [
-            {"name": "Nikkei 225",    "ticker": "^N225"},
-            {"name": "Hang Seng",     "ticker": "^HSI"},
-            {"name": "Shanghai",      "ticker": "000001.SS"},
-            {"name": "Kospi",         "ticker": "^KS11"},
-            {"name": "STI",           "ticker": "^STI"},
-            {"name": "ASX 200",       "ticker": "^AXJO"},
-            {"name": "Nifty 50",      "ticker": "^NSEI"},
-            {"name": "Sensex",        "ticker": "^BSESN"},
-            {"name": "Toyota",        "ticker": "7203.T"},
-            {"name": "Sony",          "ticker": "6758.T"},
-            {"name": "Samsung",       "ticker": "005930.KS"},
-            {"name": "Alibaba",       "ticker": "9988.HK"},
-            {"name": "Tencent",       "ticker": "0700.HK"},
-            {"name": "Meituan",       "ticker": "3690.HK"},
-            {"name": "BYD",           "ticker": "1211.HK"},
-        ],
-    },
+    "Tiền ảo": {
+        "Top Coins": {
+            "chart_ticker": "BTC-USD",
+            "chart_name":   "Bitcoin (BTC)",
+            "indices": [
+                {"name": "Bitcoin (BTC)",  "ticker": "BTC-USD"},
+                {"name": "Ethereum (ETH)", "ticker": "ETH-USD"},
+                {"name": "Binance Coin (BNB)", "ticker": "BNB-USD"},
+                {"name": "Solana (SOL)", "ticker": "SOL-USD"},
+                {"name": "Ripple (XRP)", "ticker": "XRP-USD"},
+            ],
+        },
+        "Altcoins": {
+            "chart_ticker": "ADA-USD",
+            "chart_name":   "Cardano (ADA)",
+            "indices": [
+                {"name": "Cardano (ADA)",  "ticker": "ADA-USD"},
+                {"name": "Dogecoin (DOGE)", "ticker": "DOGE-USD"},
+                {"name": "Polkadot (DOT)", "ticker": "DOT-USD"},
+                {"name": "Litecoin (LTC)", "ticker": "LTC-USD"},
+                {"name": "Chainlink (LINK)", "ticker": "LINK-USD"},
+                {"name": "Uniswap (UNI)", "ticker": "UNI-USD"},
+                {"name": "Avalanche (AVAX)", "ticker": "AVAX-USD"},
+                {"name": "Stellar (XLM)", "ticker": "XLM-USD"},
+                {"name": "TRON (TRX)", "ticker": "TRX-USD"},
+            ],
+        },
+    }
 }
+
+REGIONS = ALL_CATEGORIES_DATA["Chứng khoán"]
 
 CHART_PERIODS = {
     "1D":  {"period": "1d",  "interval": "5m"},
@@ -139,6 +238,7 @@ def fetch_chart_data(ticker: str, period: str, interval: str) -> pd.DataFrame:
             return pd.DataFrame()
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
+        df = df.loc[:, ~df.columns.duplicated()]
         return df
     except Exception:
         return pd.DataFrame()
@@ -153,6 +253,7 @@ def fetch_index_summary(ticker: str) -> dict:
             return {}
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
+        df = df.loc[:, ~df.columns.duplicated()]
         if "Close" not in df.columns:
             return {}
 
@@ -340,26 +441,33 @@ def _render_indices_table():
 # ── MAIN RENDER ──────────────────────────────────────────────────────
 
 def render_market_overview():
+    global REGIONS
+    
+    # Nạp dữ liệu REGIONS động theo category
+    category = st.session_state.get("mo_category", "Chứng khoán")
+    REGIONS = ALL_CATEGORIES_DATA.get(category, ALL_CATEGORIES_DATA["Chứng khoán"])
+
     # Session state defaults
-    if "mo_region" not in st.session_state:
-        st.session_state.mo_region = "Việt Nam"
+    if "mo_region" not in st.session_state or st.session_state.mo_region not in REGIONS:
+        st.session_state.mo_region = list(REGIONS.keys())[0]
     if "mo_period" not in st.session_state:
         st.session_state.mo_period = "1D"
     if "mo_category" not in st.session_state:
         st.session_state.mo_category = "Chứng khoán"
-    if "mo_chart_ticker" not in st.session_state:
-        st.session_state.mo_chart_ticker = REGIONS["Việt Nam"]["chart_ticker"]
-    if "mo_chart_name" not in st.session_state:
-        st.session_state.mo_chart_name = REGIONS["Việt Nam"]["chart_name"]
+        
+    current_region = st.session_state.mo_region
+    if "mo_chart_ticker" not in st.session_state or not any(idx["ticker"] == st.session_state.mo_chart_ticker for r in REGIONS.values() for idx in r["indices"]):
+        st.session_state.mo_chart_ticker = REGIONS[current_region]["chart_ticker"]
+        st.session_state.mo_chart_name = REGIONS[current_region]["chart_name"]
 
-    # Xóa ticker cũ không hợp lệ còn sót trong session (^VNINDEX, ^HNX...)
+    # Xóa ticker cũ không hợp lệ còn sót trong session
     _invalid = {
         "^VNINDEX", "^HNX", "^UPCOM", "^VN30", "^HNX30",
         "^VNMIDCAP", "^VN100", "^VNSMALL", "^VNALL", "^VS100", "VN30F1M.VN",
     }
     if st.session_state.get("mo_chart_ticker") in _invalid:
-        region = st.session_state.get("mo_region", "Việt Nam")
-        cfg    = REGIONS.get(region, REGIONS["Việt Nam"])
+        region = st.session_state.get("mo_region", list(REGIONS.keys())[0])
+        cfg    = REGIONS.get(region, REGIONS[list(REGIONS.keys())[0]])
         st.session_state.mo_chart_ticker = cfg["chart_ticker"]
         st.session_state.mo_chart_name   = cfg["chart_name"]
 
@@ -378,11 +486,13 @@ def render_market_overview():
             if st.button(cat, key=f"cat_{cat}", use_container_width=True,
                          type="primary" if is_active else "secondary"):
                 st.session_state.mo_category = cat
+                # Reset defaults dựa theo category mới
+                new_regions = ALL_CATEGORIES_DATA[cat]
+                first_r = list(new_regions.keys())[0]
+                st.session_state.mo_region = first_r
+                st.session_state.mo_chart_ticker = new_regions[first_r]["chart_ticker"]
+                st.session_state.mo_chart_name = new_regions[first_r]["chart_name"]
                 st.rerun()
-
-    if st.session_state.mo_category != "Chứng khoán":
-        st.info(f"Tính năng **{st.session_state.mo_category}** đang được phát triển — sắp ra mắt.")
-        return
 
     st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 

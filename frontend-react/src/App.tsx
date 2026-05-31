@@ -4,6 +4,7 @@ import LoginRegister from './pages/LoginRegister';
 import Overview from './pages/Overview';
 import AiAnalysis from './pages/AiAnalysis';
 import MarketCompare from './pages/MarketCompare';
+import ChatAssistant from './pages/ChatAssistant';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -23,6 +24,7 @@ const App: React.FC = () => {
   const handleLoginSuccess = (user: string, token: string) => {
     localStorage.setItem('stock_ai_token', token);
     localStorage.setItem('stock_ai_username', user);
+    localStorage.removeItem('stock_ai_chat_messages');
     setUsername(user);
     setIsAuthenticated(true);
   };
@@ -30,6 +32,7 @@ const App: React.FC = () => {
   const handleLogout = () => {
     localStorage.removeItem('stock_ai_token');
     localStorage.removeItem('stock_ai_username');
+    localStorage.removeItem('stock_ai_chat_messages');
     setUsername('');
     setIsAuthenticated(false);
     setCurrentView('overview');
@@ -43,6 +46,8 @@ const App: React.FC = () => {
         return <AiAnalysis />;
       case 'compare':
         return <MarketCompare />;
+      case 'chat':
+        return <ChatAssistant />;
       default:
         return <Overview />;
     }
