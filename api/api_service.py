@@ -17,7 +17,9 @@
 # ====================================================================
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 import logging
 import numpy as np
@@ -63,6 +65,7 @@ logger = logging.getLogger("api_service")
 
 # Khởi tạo config
 config = Config()
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Định cấu hình FastAPI App
 app = FastAPI(
@@ -270,7 +273,10 @@ scheduler_thread.start()
 
 # ========== AUTH SERVICE HELPER & ENDPOINTS ==========
 
-USERS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".streamlit", "users.json")
+USERS_FILE = os.environ.get(
+    "USERS_FILE",
+    os.path.join(BASE_DIR, ".streamlit", "users.json")
+)
 
 def _hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
@@ -1346,13 +1352,30 @@ Hãy sử dụng chính xác dữ liệu kỹ thuật thực tế ở trên đ�
 """}
 
 
+# ========== REACT STATIC FRONTEND ==========
+
+STATIC_DIR = os.environ.get("STATIC_DIR", os.path.join(BASE_DIR, "frontend-react", "dist"))
+
+if os.path.isdir(STATIC_DIR):
+    assets_dir = os.path.join(STATIC_DIR, "assets")
+    if os.path.isdir(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def serve_react_app(full_path: str):
+        requested_path = os.path.join(STATIC_DIR, full_path)
+        if full_path and os.path.isfile(requested_path):
+            return FileResponse(requested_path)
+        return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
+
 # ========== MAIN UVICORN EXECUTION ==========
 
 if __name__ == "__main__":
     # Chạy uvicorn trực tiếp
     uvicorn.run(
-        "api_service:app",
+        "api.api_service:app",
         host="0.0.0.0",
-        port=8000,
+        port=int(os.environ.get("PORT", "8000")),
         reload=True
     )

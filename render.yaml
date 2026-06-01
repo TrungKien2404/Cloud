@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: cloud-stock-ai
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PYTHONIOENCODING
+        value: utf-8
+      - key: STATIC_DIR
+        value: /app/frontend-react/dist
+      - key: USERS_FILE
+        value: /tmp/stock_ai_users.json
