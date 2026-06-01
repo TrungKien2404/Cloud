@@ -329,16 +329,26 @@ def login(user_data: UserLogin):
         )
         
     users = _load_users()
-    user_entry = users.get(username)
+    
+    # Cho phép đăng nhập bằng cả username và email (không phân biệt hoa thường)
+    user_entry = None
+    actual_username = username
+    
+    for u, data in users.items():
+        if u.lower() == username.lower() or data.get("email", "").lower() == username.lower():
+            actual_username = u
+            user_entry = data
+            break
+            
     if not user_entry or user_entry.get("password_hash") != _hash_password(password):
         raise HTTPException(status_code=401, detail="Tên đăng nhập hoặc mật khẩu không chính xác.")
         
     # Tạo mock token đơn giản (có thể thay bằng JWT nếu cần bảo mật thực tế)
-    mock_token = f"mock_token_{username}_{int(time.time())}"
+    mock_token = f"mock_token_{actual_username}_{int(time.time())}"
     return TokenResponse(
         access_token=mock_token,
         token_type="bearer",
-        username=username
+        username=actual_username
     )
 
 @app.get("/api/health", response_model=HealthResponse)
