@@ -14,3 +14,5 @@ services:
         value: /app/frontend-react/dist
       - key: USERS_FILE
         value: /tmp/stock_ai_users.json
+      - key: OLLAMA_HOST
+        sync: false
