@@ -207,46 +207,83 @@ const Overview: React.FC = () => {
 
   // Fetch Chart Data
   useEffect(() => {
-    const fetchChart = async () => {
-      setLoadingChart(true);
+    let active = true;
+    const fetchChart = async (isInitial = false) => {
+      if (isInitial) setLoadingChart(true);
       try {
         const params = CHART_PERIODS[period];
         const res = await api.get(`/api/yfinance/chart/${chartTicker}`, {
           params: { period: params.period, interval: params.interval }
         });
-        setChartData(res.data);
+        if (active) {
+          setChartData(res.data);
+        }
       } catch (err) {
         console.error('Lỗi tải dữ liệu biểu đồ:', err);
-        setChartData(null);
+        if (active && isInitial) {
+          setChartData(null);
+        }
       } finally {
-        setLoadingChart(false);
+        if (active && isInitial) {
+          setLoadingChart(false);
+        }
       }
     };
-    fetchChart();
+
+    fetchChart(true);
+
+    const intervalId = setInterval(() => {
+      fetchChart(false);
+    }, 15000);
+
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
   }, [chartTicker, period]);
 
   // Fetch Table Data for Region
   useEffect(() => {
-    const fetchTable = async () => {
-      setLoadingTable(true);
+    let active = true;
+    const fetchTable = async (isInitial = false) => {
+      if (isInitial) setLoadingTable(true);
       const activeReg = REGIONS[region] ? region : Object.keys(REGIONS)[0];
       const tickers = REGIONS[activeReg]["indices"].map((idx: any) => idx.ticker);
       const summaries: Record<string, any> = {};
 
-      await Promise.all(
-        tickers.map(async (t: string) => {
-          try {
-            const res = await api.get(`/api/yfinance/summary/${t}`);
-            summaries[t] = res.data;
-          } catch (err) {
-            console.error(`Lỗi summary ticker ${t}:`, err);
-          }
-        })
-      );
-      setIndicesSummaries(summaries);
-      setLoadingTable(false);
+      try {
+        await Promise.all(
+          tickers.map(async (t: string) => {
+            try {
+              const res = await api.get(`/api/yfinance/summary/${t}`);
+              summaries[t] = res.data;
+            } catch (err) {
+              console.error(`Lỗi summary ticker ${t}:`, err);
+            }
+          })
+        );
+        if (active) {
+          setIndicesSummaries(summaries);
+        }
+      } catch (err) {
+        console.error('Lỗi tải bảng chỉ số:', err);
+      } finally {
+        if (active && isInitial) {
+          setLoadingTable(false);
+        }
+      }
     };
-    fetchTable();
+
+    fetchTable(true);
+
+    const intervalId = setInterval(() => {
+      fetchTable(false);
+    }, 15000);
+
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
   }, [region, category]);
 
   const fmtPct = (val: number | null) => {
@@ -479,17 +516,18 @@ const styles: Record<string, React.CSSProperties> = {
   },
   mainLayout: {
     display: 'flex',
+    flexWrap: 'wrap',
     gap: '24px',
     marginTop: '10px',
   },
   leftColumn: {
-    flex: 3,
+    flex: '3 1 320px',
     display: 'flex',
     flexDirection: 'column',
     gap: '14px',
   },
   rightColumn: {
-    flex: 2,
+    flex: '2 1 320px',
     display: 'flex',
     flexDirection: 'column',
     gap: '14px',

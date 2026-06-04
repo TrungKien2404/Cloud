@@ -429,12 +429,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
   formRow: {
     display: 'flex',
+    flexWrap: 'wrap',
     alignItems: 'flex-end',
     gap: '16px',
   },
   formGroup: {
     display: 'flex',
     flexDirection: 'column',
+    flex: '1 1 200px',
   },
   label: {
     fontSize: '13px',
@@ -463,6 +465,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '12px 24px',
     height: '46px',
     minWidth: '180px',
+    flex: '1 1 180px',
   },
   alertError: {
     background: 'rgba(239, 68, 68, 0.15)',
@@ -503,7 +506,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   metricsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(4, 1fr)',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
     gap: '20px',
   },
   chartCard: {
@@ -520,7 +523,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   twoColumnGrid: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
     gap: '20px',
   },
   smallChartCard: {

@@ -496,13 +496,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
   contentGrid: {
     display: 'flex',
+    flexWrap: 'wrap',
     gap: '24px',
     alignItems: 'flex-start',
   },
   inputColumn: {
-    width: '360px',
+    flex: '1 1 320px',
+    maxWidth: '450px',
     padding: '24px',
-    flexShrink: 0,
   },
   resultColumn: {
     flexGrow: 1,
@@ -712,12 +713,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   metricsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(4, 1fr)',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
     gap: '16px',
   },
   chartAndAdviceGrid: {
     display: 'grid',
-    gridTemplateColumns: '320px 1fr',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
     gap: '20px',
   },
   chartCard: {

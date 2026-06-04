@@ -160,3 +160,30 @@ a:hover {
 ::-webkit-scrollbar-thumb:hover {
   background: #3f3f46;
 }
+
+/* Animations */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 1.5s linear infinite !important;
+  display: inline-block;
+}
+
+/* Mobile Responsive Helpers */
+@media (max-width: 768px) {
+  .glass-card {
+    padding: 16px !important;
+    border-radius: 12px !important;
+  }
+  .btn {
+    padding: 10px 16px !important;
+    font-size: 14px !important;
+  }
+}

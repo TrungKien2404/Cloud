@@ -14,6 +14,15 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, username, onLogout, isCollapsed, onToggleCollapse }) => {
   const [updating, setUpdating] = React.useState(false);
   const [updateMsg, setUpdateMsg] = React.useState('');
+  const [isMobile, setIsMobile] = React.useState(window.innerWidth <= 768);
+
+  React.useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const menuItems = [
     { id: 'overview', name: 'Tổng quan thị trường', icon: BarChart3 },
@@ -40,6 +49,37 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, username, 
       }, 5000);
     }
   };
+
+  if (isMobile) {
+    return (
+      <nav style={styles.bottomNav}>
+        {menuItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = currentView === item.id;
+          let displayName = item.name;
+          if (item.id === 'overview') displayName = 'Thị trường';
+          else if (item.id === 'analysis') displayName = 'AI Dự báo';
+          else if (item.id === 'compare') displayName = 'So sánh';
+          else if (item.id === 'chat') displayName = 'Stock AI';
+          else if (item.id === 'portfolio') displayName = 'Phân bổ';
+
+          return (
+            <button
+              key={item.id}
+              onClick={() => onViewChange(item.id)}
+              style={{
+                ...styles.bottomNavBtn,
+                ...(isActive ? styles.bottomNavBtnActive : {}),
+              }}
+            >
+              <Icon size={20} color={isActive ? '#818cf8' : '#cbd5e1'} />
+              <span style={{ fontSize: '10px', marginTop: '2px' }}>{displayName}</span>
+            </button>
+          );
+        })}
+      </nav>
+    );
+  }
 
   return (
     <aside style={{
@@ -288,6 +328,38 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     cursor: 'pointer',
     transition: 'all 0.2s',
+  },
+  bottomNav: {
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '64px',
+    background: 'rgba(15, 23, 42, 0.95)',
+    borderTop: '1px solid rgba(148, 163, 184, 0.12)',
+    backdropFilter: 'blur(16px)',
+    display: 'flex',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    padding: '0 8px',
+    zIndex: 1000,
+  },
+  bottomNavBtn: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '4px',
+    background: 'transparent',
+    border: 'none',
+    color: '#cbd5e1',
+    cursor: 'pointer',
+    flex: 1,
+    height: '100%',
+    padding: '4px 0',
+  },
+  bottomNavBtnActive: {
+    color: '#818cf8',
   },
 };
 

@@ -359,7 +359,7 @@ def generate_svg_captcha() -> tuple[str, str]:
     Tạo một mã CAPTCHA ngẫu nhiên và render dưới dạng ảnh SVG.
     Trả về: (captcha_id, svg_content)
     """
-    chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    chars = "ABCDEFGHJKLMNPQRSTUVWXYZ"
     captcha_text = "".join(random.choices(chars, k=5))
     captcha_id = str(uuid.uuid4())
     
@@ -793,10 +793,11 @@ def train_ticker_model(ticker: str):
 @app.get("/api/market-summary")
 def get_market_summary():
     """
-    Tổng hợp dữ liệu thị trường (Giai đoạn 2):
+    Tổng hợp dữ liệu thị trường (Giai đoạn 2) - Cập nhật thời gian thực (Real-time):
+    - Tải giá hiện tại từ yfinance thời gian thực.
     - Top Tăng (Top Gainers)
     - Top Giảm (Top Losers)
-    - Heatmap Tương quan
+    - Heatmap Tương quan (từ dữ liệu lịch sử)
     - Dữ liệu Watchlist
     """
     processed_path = os.path.join(config.data.get('processed_data_path', './data/processed'), 'processed_stock_data.parquet')
@@ -807,9 +808,6 @@ def get_market_summary():
     try:
         df = pd.read_parquet(processed_path)
         
-        # 1. TÍNH LATEST VALUES CHO TẤT CẢ TICKERS
-        latest_data = []
-        
         # Sắp xếp tickers theo watchlist_order.json
         order = load_watchlist_order()
         if not order:
@@ -818,7 +816,36 @@ def get_market_summary():
         order_map = {ticker: i for i, ticker in enumerate(order)}
         tickers = sorted(df['Ticker'].unique(), key=lambda x: order_map.get(x, 9999))
         
-        # Dataframe lưu trữ returns lịch sử để tính tương quan
+        # 1. TẢI GIÁ THỜI GIAN THỰC TỪ YFINANCE (2 ngày để lấy close & prev_close)
+        realtime_data = {}
+        try:
+            yf_data = yf.download(tickers, period="2d", group_by="ticker", progress=False)
+            for t in tickers:
+                try:
+                    if len(tickers) > 1:
+                        if t in yf_data.columns.levels[0]:
+                            t_df = yf_data[t].dropna(subset=['Close'])
+                        else:
+                            t_df = pd.DataFrame()
+                    else:
+                        t_df = yf_data.dropna(subset=['Close'])
+                        
+                    if not t_df.empty:
+                        close = float(t_df['Close'].iloc[-1])
+                        prev_close = float(t_df['Close'].iloc[-2]) if len(t_df) > 1 else close
+                        change_pct = ((close - prev_close) / prev_close * 100) if prev_close else 0.0
+                        realtime_data[t] = {
+                            "close": sanitize_float(close),
+                            "prev_close": sanitize_float(prev_close),
+                            "change_pct": sanitize_float(change_pct)
+                        }
+                except Exception as inner_e:
+                    logger.error(f"Error extracting realtime price for {t}: {str(inner_e)}")
+        except Exception as e:
+            logger.error(f"Failed to fetch realtime prices from yfinance: {str(e)}")
+            
+        # 2. TÍNH LATEST VALUES CHO TẤT CẢ TICKERS
+        latest_data = []
         returns_dict = {}
         
         for t in tickers:
@@ -833,9 +860,11 @@ def get_market_summary():
             df_hist = df_t.tail(120)
             returns_dict[t] = df_hist.set_index('Date')['Daily_Return']
             
-            close = float(latest_row['Close'])
-            prev_close = float(prev_row['Close'])
-            daily_change_pct = float(latest_row.get('Daily_Return', 0)) * 100
+            # Ưu tiên dữ liệu thời gian thực nếu lấy thành công
+            rt = realtime_data.get(t, {})
+            close = rt.get("close", float(latest_row['Close']))
+            prev_close = rt.get("prev_close", float(prev_row['Close']))
+            daily_change_pct = rt.get("change_pct", float(latest_row.get('Daily_Return', 0)) * 100)
             
             # Kiểm tra xem đã có model train chưa để đưa ra tín hiệu nhanh
             model_path = os.path.join('./models', f"{t.lower()}_best_model.pkl")
@@ -870,32 +899,28 @@ def get_market_summary():
             
         df_latest = pd.DataFrame(latest_data)
         
-        # 2. XÁC ĐỊNH TOP GAINERS & LOSERS
+        # 3. XÁC ĐỊNH TOP GAINERS & LOSERS
         top_gainers = []
         top_losers = []
         
         if not df_latest.empty:
-            # Sort theo change_pct
             df_sorted = df_latest.sort_values('change_pct', ascending=False)
             top_gainers = df_sorted.head(5).to_dict(orient='records')
             top_losers = df_sorted.tail(5).sort_values('change_pct', ascending=True).head(5).to_dict(orient='records')
             
-        # 3. MA TRẬN TƯƠNG QUAN TỶ SUẤT SINH LỜI (RETURNS CORRELATION HEATMAP)
-        # Kết hợp returns lịch sử thành một DataFrame chung
+        # 4. MA TRẬN TƯƠNG QUAN TỶ SUẤT SINH LỜI
         df_returns = pd.DataFrame(returns_dict).dropna(how='all').fillna(0)
         corr_matrix = df_returns.corr().round(3)
-        
-        # Chuẩn bị dữ liệu JSON cho Plotly Heatmap
         corr_data = {
-            "z": corr_matrix.values.tolist(),
+            "z": [[sanitize_float(v) for v in row] for row in corr_matrix.values.tolist()],
             "x": corr_matrix.columns.tolist(),
             "y": corr_matrix.index.tolist()
         }
         
         return {
-            "watchlist": latest_data,
-            "top_gainers": top_gainers,
-            "top_losers": top_losers,
+            "watchlist": [{k: (sanitize_float(v) if isinstance(v, (int, float)) else v) for k, v in row.items()} for row in latest_data],
+            "top_gainers": [{k: (sanitize_float(v) if isinstance(v, (int, float)) else v) for k, v in row.items()} for row in top_gainers],
+            "top_losers": [{k: (sanitize_float(v) if isinstance(v, (int, float)) else v) for k, v in row.items()} for row in top_losers],
             "correlation": corr_data,
             "timestamp": datetime.now().isoformat()
         }
@@ -906,12 +931,24 @@ def get_market_summary():
 
 # ========== YFINANCE PROXY ENDPOINTS FOR REACT OVERVIEW ==========
 
+_yf_cache = {}
+_yf_cache_ttl = 15  # seconds
+
 def _yf_download_cached(ticker: str, period: str, interval: str):
+    cache_key = (ticker, period, interval)
+    now = time.time()
+    if cache_key in _yf_cache:
+        cached_df, cache_time = _yf_cache[cache_key]
+        if now - cache_time < _yf_cache_ttl:
+            return cached_df
+            
     df = yf.download(ticker, period=period, interval=interval, auto_adjust=True, progress=False)
     if df is not None and not df.empty:
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
         df = df.loc[:, ~df.columns.duplicated()]
+        
+    _yf_cache[cache_key] = (df, now)
     return df
 
 @app.get("/api/yfinance/chart/{ticker}")

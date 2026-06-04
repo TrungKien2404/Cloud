@@ -298,7 +298,7 @@ const MarketCompare: React.FC = () => {
           {/* 4. Correlation Heatmap */}
           {summary.correlation && (
             <div style={styles.twoColumnHeatmap}>
-              <div className="glass-card" style={{ ...styles.card, flex: 2 }}>
+              <div className="glass-card" style={{ ...styles.card, flex: '2 1 280px' }}>
                 <h3 style={styles.cardTitle}>📊 Ma Trận Tương Quan Sinh Lời (120 phiên)</h3>
                 <Plot
                   data={[
@@ -326,7 +326,7 @@ const MarketCompare: React.FC = () => {
                 />
               </div>
 
-              <div className="glass-card" style={{ ...styles.card, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div className="glass-card" style={{ ...styles.card, flex: '1 1 280px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <h4 style={styles.heatmapExplainTitle}>Giải thích Chỉ Số Tương Quan (Correlation):</h4>
                 <ul style={styles.heatmapList}>
                   <li>
@@ -387,7 +387,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   topCardsGrid: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
     gap: '20px',
   },
   card: {
@@ -536,6 +536,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   twoColumnHeatmap: {
     display: 'flex',
+    flexWrap: 'wrap',
     gap: '20px',
   },
   heatmapExplainTitle: {
