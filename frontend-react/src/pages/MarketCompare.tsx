@@ -477,7 +477,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   tableContainer: {
     overflowY: 'auto',
+    overflowX: 'auto',
     maxHeight: '340px',
+    width: '100%',
   },
   table: {
     width: '100%',

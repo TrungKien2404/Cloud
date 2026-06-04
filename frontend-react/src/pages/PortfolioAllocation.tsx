@@ -363,51 +363,53 @@ const PortfolioAllocation: React.FC = () => {
               {/* Table of Allocations */}
               <div className="glass-card" style={styles.tableCard}>
                 <h4 style={styles.cardTitle}>Chi tiết phân chia vốn</h4>
-                <table style={styles.table}>
-                  <thead>
-                    <tr>
-                      <th style={styles.thLeft}>Mã tài sản</th>
-                      <th style={styles.th}>Tỷ trọng (%)</th>
-                      <th style={styles.th}>Số tiền phân bổ</th>
-                      <th style={styles.th}>LN kỳ vọng</th>
-                      <th style={styles.th}>Rủi ro</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.allocations.map((alloc) => (
-                      <React.Fragment key={alloc.ticker}>
-                        <tr style={styles.tr}>
-                          <td style={styles.tdLeft}>
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <span style={styles.assetTicker}>{alloc.ticker}</span>
-                              <span style={styles.assetName}>{alloc.name}</span>
-                            </div>
-                          </td>
-                          <td style={styles.td}>{alloc.weight.toFixed(1)}%</td>
-                          <td style={{ ...styles.td, color: '#a5b4fc', fontWeight: 700 }}>
-                            {formatCurrency(alloc.amount)}
-                          </td>
-                          <td style={styles.td}>{alloc.expected_return.toFixed(1)}% / năm</td>
-                          <td style={styles.td}>
-                            <span style={{
-                              color: alloc.risk_level.includes('High') ? '#ef4444' : alloc.risk_level.includes('Medium') ? '#f59e0b' : '#10b981',
-                              fontSize: '12px',
-                              fontWeight: 700
-                            }}>
-                              {alloc.risk_level.split(' ')[0]}
-                            </span>
-                          </td>
-                        </tr>
-                        <tr>
-                          <td colSpan={5} style={styles.explanationTd}>
-                            <Info size={12} color="#64748b" style={{ flexShrink: 0, marginTop: '2px' }} />
-                            <span>{alloc.explanation}</span>
-                          </td>
-                        </tr>
-                      </React.Fragment>
-                    ))}
-                  </tbody>
-                </table>
+                <div style={{ overflowX: 'auto', width: '100%' }}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        <th style={styles.thLeft}>Mã tài sản</th>
+                        <th style={styles.th}>Tỷ trọng (%)</th>
+                        <th style={styles.th}>Số tiền phân bổ</th>
+                        <th style={styles.th}>LN kỳ vọng</th>
+                        <th style={styles.th}>Rủi ro</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.allocations.map((alloc) => (
+                        <React.Fragment key={alloc.ticker}>
+                          <tr style={styles.tr}>
+                            <td style={styles.tdLeft}>
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span style={styles.assetTicker}>{alloc.ticker}</span>
+                                <span style={styles.assetName}>{alloc.name}</span>
+                              </div>
+                            </td>
+                            <td style={styles.td}>{alloc.weight.toFixed(1)}%</td>
+                            <td style={{ ...styles.td, color: '#a5b4fc', fontWeight: 700 }}>
+                              {formatCurrency(alloc.amount)}
+                            </td>
+                            <td style={styles.td}>{alloc.expected_return.toFixed(1)}% / năm</td>
+                            <td style={styles.td}>
+                              <span style={{
+                                color: alloc.risk_level.includes('High') ? '#ef4444' : alloc.risk_level.includes('Medium') ? '#f59e0b' : '#10b981',
+                                fontSize: '12px',
+                                fontWeight: 700
+                              }}>
+                                {alloc.risk_level.split(' ')[0]}
+                              </span>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td colSpan={5} style={styles.explanationTd}>
+                              <Info size={12} color="#64748b" style={{ flexShrink: 0, marginTop: '2px' }} />
+                              <span>{alloc.explanation}</span>
+                            </td>
+                          </tr>
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               {/* Correlation Matrix */}

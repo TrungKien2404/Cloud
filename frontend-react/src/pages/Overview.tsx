@@ -491,6 +491,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   tabBar: {
     display: 'flex',
+    flexWrap: 'wrap',
     gap: '12px',
     marginBottom: '20px',
   },
@@ -534,11 +535,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   periodBar: {
     display: 'flex',
+    flexWrap: 'wrap',
     background: 'rgba(15, 23, 42, 0.4)',
     padding: '4px',
     borderRadius: '10px',
     gap: '4px',
-    maxWidth: 'max-content',
+    maxWidth: '100%',
   },
   periodBtn: {
     padding: '6px 12px',
@@ -557,6 +559,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   regionBar: {
     display: 'flex',
+    flexWrap: 'wrap',
     background: 'rgba(15, 23, 42, 0.4)',
     padding: '4px',
     borderRadius: '10px',
@@ -626,6 +629,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   tableContainer: {
     overflowY: 'auto',
+    overflowX: 'auto',
     maxHeight: '420px',
     width: '100%',
   },
