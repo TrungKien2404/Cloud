@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, AlertTriangle, Sparkles, Zap, Settings, RefreshCw, Plus, Trash2, MessageSquare } from 'lucide-react';
+import { Send, AlertTriangle, Sparkles, Zap, Settings, RefreshCw, Plus, Trash2, MessageSquare, Menu, ArrowLeft } from 'lucide-react';
 import api from '../api';
 
 interface Message {
@@ -23,6 +23,20 @@ const ChatAssistant: React.FC = () => {
   // Threads State
   const [threads, setThreads] = useState<{ id: string; title: string; created_at?: string }[]>([]);
   const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
+
+  // Mobile and Sidebar states
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [showSidebar, setShowSidebar] = useState(window.innerWidth > 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth <= 768;
+      setIsMobile(mobile);
+      setShowSidebar(!mobile);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Advanced config states
   const [showConfig, setShowConfig] = useState(false);
@@ -78,6 +92,9 @@ const ChatAssistant: React.FC = () => {
       setThreads(prev => [newThread, ...prev]);
       setCurrentThreadId(newThread.id);
       setMessages(newThread.messages);
+      if (isMobile) {
+        setShowSidebar(false);
+      }
     } catch (err) {
       console.error('Lỗi khi tạo cuộc trò chuyện mới:', err);
     } finally {
@@ -112,6 +129,9 @@ const ChatAssistant: React.FC = () => {
     if (threadId === currentThreadId || sending) return;
     setCurrentThreadId(threadId);
     fetchThreadDetails(threadId);
+    if (isMobile) {
+      setShowSidebar(false);
+    }
   };
 
   useEffect(() => {
@@ -294,207 +314,299 @@ const ChatAssistant: React.FC = () => {
   };
 
   return (
-    <div style={styles.container}>
-      <header style={styles.header}>
-        <div>
-          <h2 style={styles.title}>Stock AI Assistant</h2>
-          <p style={styles.subtitle}>Bộ não phân tích chứng khoán offline cục bộ & miễn phí</p>
-        </div>
-        
-        <div style={{ display: 'flex', gap: '10px' }}>
-          {/* Clear History Button */}
-          <button 
-            onClick={handleClearChat}
-            disabled={sending}
-            style={styles.clearHistoryBtn}
-          >
-            <span>🧹 Xóa lịch sử</span>
-          </button>
-
-          {/* Advanced Config Button */}
-          <button 
-            onClick={() => { setShowConfig(!showConfig); checkStatus(); }}
-            style={{
-              ...styles.configToggleBtn,
-              ...(showConfig ? styles.configToggleBtnActive : {})
-            }}
-          >
-            <Settings size={18} />
-            <span>Cấu hình nâng cao</span>
-          </button>
-        </div>
-      </header>
-  
-      {/* Main Content Area */}
-      <div style={styles.workspace}>
-        {/* Left Sidebar - Chat Threads */}
-        <div style={styles.chatSidebar}>
-          <button 
-            onClick={handleCreateThread}
-            disabled={sending}
-            style={styles.newChatBtn}
-            onMouseOver={(e) => {
-              e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(168, 85, 247, 0.25))';
-              e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.6)';
-              e.currentTarget.style.color = '#ffffff';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.1))';
-              e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.4)';
-              e.currentTarget.style.color = '#cbd5e1';
-            }}
-          >
-            <Plus size={16} />
-            <span>Cuộc trò chuyện mới</span>
-          </button>
+    <div style={{
+      ...styles.container,
+      height: isMobile ? 'calc(100vh - 178px)' : 'calc(100vh - 80px)'
+    }}>
+      {/* Desktop Header */}
+      {!isMobile && (
+        <header style={styles.header}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <button 
+              onClick={() => setShowSidebar(!showSidebar)}
+              style={styles.toggleSidebarBtn}
+              title={showSidebar ? "Ẩn lịch sử trò chuyện" : "Hiện lịch sử trò chuyện"}
+            >
+              <Menu size={20} />
+            </button>
+            <div>
+              <h2 style={styles.title}>Stock AI Assistant</h2>
+              <p style={styles.subtitle}>Bộ não phân tích chứng khoán offline cục bộ & miễn phí</p>
+            </div>
+          </div>
           
-          <div style={styles.threadList}>
-            {threads.map((thread) => {
-              const isActive = thread.id === currentThreadId;
-              return (
-                <div
-                  key={thread.id}
-                  onClick={() => handleSelectThread(thread.id)}
-                  style={{
-                    ...styles.threadItem,
-                    ...(isActive ? styles.activeThreadItem : {}),
-                  }}
-                  onMouseOver={(e) => {
-                    if (!isActive) {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-                    }
-                  }}
-                  onMouseOut={(e) => {
-                    if (!isActive) {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.borderColor = 'transparent';
-                    }
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', overflow: 'hidden', flexGrow: 1 }}>
-                    <MessageSquare 
-                      size={14} 
-                      style={{ 
-                        color: isActive ? '#818cf8' : '#64748b', 
-                        marginRight: '8px', 
-                        flexShrink: 0 
-                      }} 
-                    />
-                    <span style={styles.threadTitle} title={thread.title}>
-                      {thread.title}
-                    </span>
-                  </div>
-                  
-                  <button
-                    onClick={(e) => handleDeleteThread(e, thread.id)}
-                    style={styles.deleteThreadBtn}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.color = '#ef4444';
-                      e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)';
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.color = '#64748b';
-                      e.currentTarget.style.background = 'transparent';
-                    }}
-                    title="Xóa cuộc hội thoại"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Right Area - Chat Room */}
-        <div style={styles.chatSection}>
-          {/* Chat Messages Log */}
-          <div className="glass-card" style={styles.chatWindow}>
-            {messages.map((msg, idx) => (
-              <div 
-                key={idx} 
-                style={{
-                  ...styles.messageRow,
-                  justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                  flexDirection: 'column',
-                  alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                  gap: '8px'
-                }}
-              >
-                <div 
-                  style={{
-                    ...styles.messageBubble,
-                    ...(msg.role === 'user' ? styles.userBubble : styles.assistantBubble)
-                  }}
-                  dangerouslySetInnerHTML={{ __html: msg.content }}
-                />
-                {msg.role === 'assistant' && msg.content.includes('Phân tích nhanh') && (
-                  <button
-                    onClick={() => handleDownloadPDF(msg.content)}
-                    style={{
-                      background: 'rgba(99, 102, 241, 0.2)',
-                      border: '1px solid rgba(99, 102, 241, 0.4)',
-                      borderRadius: '6px',
-                      color: '#a5b4fc',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      padding: '6px 12px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      marginLeft: '4px',
-                      transition: 'all 0.2s',
-                    }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.background = 'rgba(99, 102, 241, 0.35)';
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.background = 'rgba(99, 102, 241, 0.2)';
-                    }}
-                  >
-                    <span>Tải báo cáo PDF</span>
-                  </button>
-                )}
-              </div>
-            ))}
-            {sending && (
-              <div style={{ ...styles.messageRow, justifyContent: 'flex-start' }}>
-                <div style={{ ...styles.messageBubble, ...styles.assistantBubble, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div className="dot-pulse" style={styles.typingDot}></div>
-                  <span style={{ fontSize: '13px', color: '#94a3b8' }}>AI đang lập luận và viết câu trả lời...</span>
-                </div>
-              </div>
-            )}
-            <div ref={chatEndRef} />
-          </div>
-
-          {/* Chat Input Bar */}
-          <div style={styles.inputArea}>
-            <textarea
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={handleKeyPress}
-              placeholder="Nhập câu hỏi của bạn và nhấn Enter để gửi..."
+          <div style={{ display: 'flex', gap: '10px' }}>
+            {/* Clear History Button */}
+            <button 
+              onClick={handleClearChat}
               disabled={sending}
-              style={styles.textarea}
-              rows={1}
-            />
-            <button
-              onClick={() => handleSendMessage(inputText)}
-              disabled={sending || !inputText.trim()}
+              style={styles.clearHistoryBtn}
+            >
+              <span>🧹 Xóa lịch sử</span>
+            </button>
+
+            {/* Advanced Config Button */}
+            <button 
+              onClick={() => { setShowConfig(!showConfig); checkStatus(); }}
               style={{
-                ...styles.sendBtn,
-                ...((sending || !inputText.trim()) ? styles.sendBtnDisabled : {})
+                ...styles.configToggleBtn,
+                ...(showConfig ? styles.configToggleBtnActive : {})
               }}
             >
-              <Send size={18} />
+              <Settings size={18} />
+              <span>Cấu hình nâng cao</span>
             </button>
           </div>
+        </header>
+      )}
 
+      {/* Mobile Header (Sidebar list view) */}
+      {isMobile && showSidebar && (
+        <header style={styles.header}>
+          <div>
+            <h2 style={{ ...styles.title, fontSize: '20px' }}>Lịch sử trò chuyện</h2>
+            <p style={styles.subtitle}>Chọn một cuộc hội thoại hoặc tạo mới</p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button 
+              onClick={() => { setShowConfig(!showConfig); checkStatus(); }}
+              style={{
+                ...styles.configToggleBtn,
+                padding: '8px 10px',
+                ...(showConfig ? styles.configToggleBtnActive : {})
+              }}
+              title="Cấu hình AI"
+            >
+              <Settings size={18} />
+            </button>
+          </div>
+        </header>
+      )}
 
-        </div>
+      {/* Mobile Header (Chat view) */}
+      {isMobile && !showSidebar && (
+        <header style={{ ...styles.header, gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden', flex: 1 }}>
+            <button 
+              onClick={() => setShowSidebar(true)}
+              style={styles.mobileBackBtn}
+              title="Quay lại danh sách"
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <div style={{ overflow: 'hidden' }}>
+              <h2 style={{ ...styles.title, fontSize: '16px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {threads.find(t => t.id === currentThreadId)?.title || "Cuộc trò chuyện mới"}
+              </h2>
+              <span style={{ fontSize: '11px', color: '#64748b' }}>Stock AI Assistant</span>
+            </div>
+          </div>
+          
+          <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+            <button 
+              onClick={handleClearChat}
+              disabled={sending}
+              style={{
+                ...styles.clearHistoryBtn,
+                padding: '8px 10px',
+              }}
+              title="Dọn dẹp cuộc trò chuyện"
+            >
+              <span>🧹</span>
+            </button>
+            <button 
+              onClick={() => { setShowConfig(!showConfig); checkStatus(); }}
+              style={{
+                ...styles.configToggleBtn,
+                padding: '8px 10px',
+                ...(showConfig ? styles.configToggleBtnActive : {})
+              }}
+              title="Cấu hình AI"
+            >
+              <Settings size={18} />
+            </button>
+          </div>
+        </header>
+      )}
+  
+      {/* Main Content Area */}
+      <div style={{
+        ...styles.workspace,
+        gap: (isMobile || !showSidebar) ? '0' : '24px'
+      }}>
+        {/* Left Sidebar - Chat Threads */}
+        {showSidebar && (
+          <div style={{
+            ...styles.chatSidebar,
+            ...(isMobile ? { width: '100%' } : {})
+          }}>
+            <button 
+              onClick={handleCreateThread}
+              disabled={sending}
+              style={styles.newChatBtn}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(168, 85, 247, 0.25))';
+                e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.6)';
+                e.currentTarget.style.color = '#ffffff';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.1))';
+                e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.4)';
+                e.currentTarget.style.color = '#cbd5e1';
+              }}
+            >
+              <Plus size={16} />
+              <span>Cuộc trò chuyện mới</span>
+            </button>
+            
+            <div style={styles.threadList}>
+              {threads.map((thread) => {
+                const isActive = thread.id === currentThreadId;
+                return (
+                  <div
+                    key={thread.id}
+                    onClick={() => handleSelectThread(thread.id)}
+                    style={{
+                      ...styles.threadItem,
+                      ...(isActive ? styles.activeThreadItem : {}),
+                    }}
+                    onMouseOver={(e) => {
+                      if (!isActive) {
+                        e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                        e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                      }
+                    }}
+                    onMouseOut={(e) => {
+                      if (!isActive) {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.borderColor = 'transparent';
+                      }
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', overflow: 'hidden', flexGrow: 1 }}>
+                      <MessageSquare 
+                        size={14} 
+                        style={{ 
+                          color: isActive ? '#818cf8' : '#64748b', 
+                          marginRight: '8px', 
+                          flexShrink: 0 
+                        }} 
+                      />
+                      <span style={styles.threadTitle} title={thread.title}>
+                        {thread.title}
+                      </span>
+                    </div>
+                    
+                    <button
+                      onClick={(e) => handleDeleteThread(e, thread.id)}
+                      style={styles.deleteThreadBtn}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.color = '#ef4444';
+                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.color = '#64748b';
+                        e.currentTarget.style.background = 'transparent';
+                      }}
+                      title="Xóa cuộc hội thoại"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Right Area - Chat Room */}
+        {(!isMobile || !showSidebar) && (
+          <div style={styles.chatSection}>
+            {/* Chat Messages Log */}
+            <div className="glass-card" style={styles.chatWindow}>
+              {messages.map((msg, idx) => (
+                <div 
+                  key={idx} 
+                  style={{
+                    ...styles.messageRow,
+                    justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                    flexDirection: 'column',
+                    alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                    gap: '8px'
+                  }}
+                >
+                  <div 
+                    style={{
+                      ...styles.messageBubble,
+                      ...(msg.role === 'user' ? styles.userBubble : styles.assistantBubble)
+                    }}
+                    dangerouslySetInnerHTML={{ __html: msg.content }}
+                  />
+                  {msg.role === 'assistant' && msg.content.includes('Phân tích nhanh') && (
+                    <button
+                      onClick={() => handleDownloadPDF(msg.content)}
+                      style={{
+                        background: 'rgba(99, 102, 241, 0.2)',
+                        border: '1px solid rgba(99, 102, 241, 0.4)',
+                        borderRadius: '6px',
+                        color: '#a5b4fc',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        padding: '6px 12px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        marginLeft: '4px',
+                        transition: 'all 0.2s',
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.background = 'rgba(99, 102, 241, 0.35)';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.background = 'rgba(99, 102, 241, 0.2)';
+                      }}
+                    >
+                      <span>Tải báo cáo PDF</span>
+                    </button>
+                  )}
+                </div>
+              ))}
+              {sending && (
+                <div style={{ ...styles.messageRow, justifyContent: 'flex-start' }}>
+                  <div style={{ ...styles.messageBubble, ...styles.assistantBubble, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div className="dot-pulse" style={styles.typingDot}></div>
+                    <span style={{ fontSize: '13px', color: '#94a3b8' }}>AI đang lập luận và viết câu trả lời...</span>
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Chat Input Bar */}
+            <div style={styles.inputArea}>
+              <textarea
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={handleKeyPress}
+                placeholder="Nhập câu hỏi của bạn và nhấn Enter để gửi..."
+                disabled={sending}
+                style={styles.textarea}
+                rows={1}
+              />
+              <button
+                onClick={() => handleSendMessage(inputText)}
+                disabled={sending || !inputText.trim()}
+                style={{
+                  ...styles.sendBtn,
+                  ...((sending || !inputText.trim()) ? styles.sendBtnDisabled : {})
+                }}
+              >
+                <Send size={18} />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Right Area - Sidebar Settings (Conditional or Floating panel) */}
         <div style={{
@@ -603,6 +715,34 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: '16px',
+    flexShrink: 0,
+  },
+  toggleSidebarBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '40px',
+    height: '40px',
+    background: 'rgba(30, 41, 59, 0.4)',
+    border: '1px solid rgba(148, 163, 184, 0.2)',
+    borderRadius: '10px',
+    color: '#cbd5e1',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    flexShrink: 0,
+  },
+  mobileBackBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '36px',
+    height: '36px',
+    background: 'rgba(30, 41, 59, 0.6)',
+    border: '1px solid rgba(148, 163, 184, 0.25)',
+    borderRadius: '8px',
+    color: '#cbd5e1',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
     flexShrink: 0,
   },
   clearHistoryBtn: {
