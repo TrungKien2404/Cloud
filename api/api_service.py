@@ -623,7 +623,45 @@ def get_prediction(ticker: str):
     Thực hiện dự đoán xu hướng giá cổ phiếu ngày tiếp theo sử dụng mô hình riêng biệt của từng mã
     """
     ticker_upper = ticker.upper()
-    processed_path = os.path.join(config.data.get('processed_data_path', './data/processed'), 'processed_stock_data.parquet')
+    processed_dir = config.data.get('processed_data_path', './data/processed')
+    batch_predictions_path = os.path.join(processed_dir, 'batch_predictions.parquet')
+    
+    # Check if pre-computed batch predictions exist
+    if os.path.exists(batch_predictions_path):
+        try:
+            df_batch = pd.read_parquet(batch_predictions_path)
+            df_ticker = df_batch[df_batch['ticker'] == ticker_upper]
+            if not df_ticker.empty:
+                latest_pred = df_ticker.iloc[-1]
+                
+                # Parse metrics
+                raw_metrics = latest_pred.get('metrics')
+                metrics = {}
+                if raw_metrics:
+                    try:
+                        metrics = json.loads(raw_metrics) if isinstance(raw_metrics, str) else raw_metrics
+                    except Exception:
+                        pass
+                
+                logger.info(f"📊 [API] Loaded batch prediction for {ticker_upper} from {batch_predictions_path}")
+                return PredictionResponse(
+                    ticker=ticker_upper,
+                    latest_close=float(latest_pred['latest_close']),
+                    predicted_next_close=float(latest_pred['predicted_next_close']),
+                    predicted_return=float(latest_pred['predicted_return']),
+                    recommendation=str(latest_pred['recommendation']),
+                    reco_desc=str(latest_pred['reco_desc']),
+                    box_color=str(latest_pred['box_color']),
+                    text_color=str(latest_pred['text_color']),
+                    model_used=str(latest_pred['model_used']),
+                    metrics=metrics,
+                    prediction_date=str(latest_pred['prediction_date']),
+                    timestamp=str(latest_pred.get('timestamp', datetime.now().isoformat()))
+                )
+        except Exception as e:
+            logger.warning(f"⚠️ [API] Failed to load batch prediction for {ticker_upper}: {str(e)}. Falling back to real-time calculation.")
+            
+    processed_path = os.path.join(processed_dir, 'processed_stock_data.parquet')
     model_path = os.path.join('./models', f"{ticker_upper.lower()}_best_model.pkl")
     
     if not os.path.exists(processed_path):
@@ -867,26 +905,41 @@ def get_market_summary():
             daily_change_pct = rt.get("change_pct", float(latest_row.get('Daily_Return', 0)) * 100)
             
             # Kiểm tra xem đã có model train chưa để đưa ra tín hiệu nhanh
-            model_path = os.path.join('./models', f"{t.lower()}_best_model.pkl")
             signal = "Chưa có Model"
-            if os.path.exists(model_path):
+            loaded_from_batch = False
+            
+            processed_dir = config.data.get('processed_data_path', './data/processed')
+            batch_predictions_path = os.path.join(processed_dir, 'batch_predictions.parquet')
+            if os.path.exists(batch_predictions_path):
                 try:
-                    payload = joblib.load(model_path)
-                    model = payload['model']
-                    features = payload['feature_columns']
-                    X = latest_row[features].values.reshape(1, -1)
-                    pred_ret = float(model.predict(X)[0])
+                    df_batch = pd.read_parquet(batch_predictions_path)
+                    df_ticker_batch = df_batch[df_batch['ticker'] == t]
+                    if not df_ticker_batch.empty:
+                        signal = str(df_ticker_batch.iloc[-1]['signal'])
+                        loaded_from_batch = True
+                except Exception as e:
+                    logger.warning(f"⚠️ [API] Failed to load batch signal for {t}: {str(e)}")
                     
-                    if pred_ret >= 0.01:
-                        signal = "🟢 MUA MẠNH"
-                    elif 0.00 <= pred_ret < 0.01:
-                        signal = "🟡 MUA/GIỮ"
-                    elif -0.01 < pred_ret < 0.00:
-                        signal = "🟠 GIỮ/BÁN"
-                    else:
-                        signal = "🔴 BÁN MẠNH"
-                except:
-                    signal = "Lỗi Model"
+            if not loaded_from_batch:
+                model_path = os.path.join('./models', f"{t.lower()}_best_model.pkl")
+                if os.path.exists(model_path):
+                    try:
+                        payload = joblib.load(model_path)
+                        model = payload['model']
+                        features = payload['feature_columns']
+                        X = latest_row[features].values.reshape(1, -1)
+                        pred_ret = float(model.predict(X)[0])
+                        
+                        if pred_ret >= 0.01:
+                            signal = "🟢 MUA MẠNH"
+                        elif 0.00 <= pred_ret < 0.01:
+                            signal = "🟡 MUA/GIỮ"
+                        elif -0.01 < pred_ret < 0.00:
+                            signal = "🟠 GIỮ/BÁN"
+                        else:
+                            signal = "🔴 BÁN MẠNH"
+                    except:
+                        signal = "Lỗi Model"
                     
             latest_data.append({
                 "ticker": t,
