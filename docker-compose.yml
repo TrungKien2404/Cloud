@@ -1,5 +1,14 @@
 
 services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: stock_prediction_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
   backend:
     build:
       context: .
@@ -13,6 +22,9 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONIOENCODING=utf-8
+      - OLLAMA_HOST=http://ollama:11434
+    depends_on:
+      - ollama
     restart: unless-stopped
 
   frontend:
@@ -27,3 +39,6 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+
+volumes:
+  ollama_data:

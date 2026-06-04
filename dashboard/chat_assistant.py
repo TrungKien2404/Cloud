@@ -10,6 +10,7 @@ import requests
 import re
 import time
 import json
+import os
 from datetime import datetime
 
 # Import các hàm tính toán từ module phân tích sẵn có
@@ -20,7 +21,7 @@ except Exception as e:
     AI_ANALYTICS_OK = False
     st.error(f"Lỗi import từ ai_analysis.py: {str(e)}")
 
-OLLAMA_HOST = "http://localhost:11434"
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
 
 # Danh sách Tickers mặc định của hệ thống để quét nhanh
 SYSTEM_TICKERS = [

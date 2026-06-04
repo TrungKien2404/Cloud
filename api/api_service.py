@@ -36,6 +36,7 @@ import json
 import hashlib
 import yfinance as yf
 
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
 
 
 # Thêm thư mục gốc vào PYTHONPATH để tránh ModuleNotFoundError khi chạy trực tiếp
@@ -1268,7 +1269,7 @@ class ChatRequest(BaseModel):
 def get_chat_status():
     import requests
     try:
-        r = requests.get("http://localhost:11434/api/tags", timeout=1.0)
+        r = requests.get(f"{OLLAMA_HOST}/api/tags", timeout=1.0)
         return {"alive": r.status_code == 200}
     except:
         return {"alive": False}
@@ -1277,7 +1278,7 @@ def get_chat_status():
 def get_chat_models():
     import requests
     try:
-        r = requests.get("http://localhost:11434/api/tags", timeout=1.0)
+        r = requests.get(f"{OLLAMA_HOST}/api/tags", timeout=1.0)
         if r.status_code == 200:
             models = [m.get("name") for m in r.json().get("models", [])]
             return {"models": models}
@@ -2031,7 +2032,7 @@ def _post_chat_response_inner(req: ChatRequest):
     # 4. Chế độ phân tích thông minh (Ollama)
     else:
         try:
-            r = requests.get("http://localhost:11434/api/tags", timeout=1.0)
+            r = requests.get(f"{OLLAMA_HOST}/api/tags", timeout=1.0)
             if r.status_code != 200:
                 raise Exception()
         except:
@@ -2070,7 +2071,7 @@ Hãy sử dụng chính xác dữ liệu kỹ thuật thực tế ở trên đ�
             prompt_context = f"Người dùng hỏi câu hỏi lý thuyết hoặc trò chuyện thông thường: {req.message}. Hãy trả lời thông minh, chuyên nghiệp dưới góc độ tài chính bằng tiếng Việt. Tuyệt đối không sử dụng bất kỳ biểu tượng cảm xúc (emoji) hay icon nào trong câu trả lời."
 
         try:
-            url = "http://localhost:11434/api/generate"
+            url = f"{OLLAMA_HOST}/api/generate"
             payload = {
                 "model": req.model,
                 "prompt": prompt_context,
