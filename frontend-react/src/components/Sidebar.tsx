@@ -1,5 +1,5 @@
 import React from 'react';
-import { TrendingUp, BarChart3, ArrowLeftRight, LogOut, User, RefreshCw, MessageSquare } from 'lucide-react';
+import { TrendingUp, BarChart3, ArrowLeftRight, LogOut, User, RefreshCw, MessageSquare, PieChart, ChevronLeft, ChevronRight } from 'lucide-react';
 import api from '../api';
 
 interface SidebarProps {
@@ -7,9 +7,11 @@ interface SidebarProps {
   onViewChange: (view: string) => void;
   username: string;
   onLogout: () => void;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, username, onLogout }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, username, onLogout, isCollapsed, onToggleCollapse }) => {
   const [updating, setUpdating] = React.useState(false);
   const [updateMsg, setUpdateMsg] = React.useState('');
 
@@ -17,7 +19,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, username, 
     { id: 'overview', name: 'Tổng quan thị trường', icon: BarChart3 },
     { id: 'analysis', name: 'Phân Tích & AI Dự Báo', icon: TrendingUp },
     { id: 'compare', name: 'Thị Trường & So Sánh', icon: ArrowLeftRight },
-    { id: 'chat', name: 'Trợ Lý AI Chat', icon: MessageSquare },
+    { id: 'chat', name: 'Stock AI Assistant', icon: MessageSquare },
+    { id: 'portfolio', name: 'Phân Bổ Danh Mục', icon: PieChart },
   ];
 
   const handleSystemUpdate = async () => {
@@ -39,18 +42,49 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, username, 
   };
 
   return (
-    <aside style={styles.sidebar}>
-      <div style={styles.header}>
-        <TrendingUp size={32} color="#6366f1" />
-        <h2 style={styles.title}>Bảng Điều Khiển</h2>
+    <aside style={{
+      ...styles.sidebar,
+      width: isCollapsed ? '80px' : '280px',
+      padding: isCollapsed ? '24px 10px' : '24px',
+      transition: 'all 0.3s ease',
+    }}>
+      <div style={{
+        ...styles.header,
+        justifyContent: isCollapsed ? 'center' : 'space-between',
+        flexDirection: isCollapsed ? 'column' : 'row',
+        gap: '12px',
+        alignItems: 'center',
+      }}>
+        {!isCollapsed && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <TrendingUp size={28} color="#6366f1" />
+            <h2 style={styles.title}>Stock AI</h2>
+          </div>
+        )}
+        {isCollapsed && <TrendingUp size={28} color="#6366f1" style={{ marginBottom: '4px' }} />}
+        
+        <button 
+          onClick={onToggleCollapse} 
+          style={styles.collapseToggleBtn}
+          title={isCollapsed ? "Mở rộng" : "Thu gọn"}
+        >
+          {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        </button>
       </div>
 
-      <div style={styles.userBadge}>
-        <User size={16} color="#a5b4fc" />
-        <div style={styles.userInfo}>
-          <span style={styles.userLabel}>đăng nhập với</span>
-          <span style={styles.userName}>{username}</span>
-        </div>
+      <div style={{
+        ...styles.userBadge,
+        justifyContent: isCollapsed ? 'center' : 'flex-start',
+        padding: isCollapsed ? '12px 10px' : '12px 16px',
+        transition: 'all 0.3s ease',
+      }}>
+        <User size={16} color="#a5b4fc" style={{ flexShrink: 0 }} />
+        {!isCollapsed && (
+          <div style={styles.userInfo}>
+            <span style={styles.userLabel}>đăng nhập với</span>
+            <span style={styles.userName}>{username}</span>
+          </div>
+        )}
       </div>
 
       <nav style={styles.nav}>
@@ -64,10 +98,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, username, 
               style={{
                 ...styles.navBtn,
                 ...(isActive ? styles.navBtnActive : {}),
+                justifyContent: isCollapsed ? 'center' : 'flex-start',
+                padding: isCollapsed ? '12px' : '14px 20px',
+                transition: 'all 0.2s ease',
               }}
+              title={isCollapsed ? item.name : undefined}
             >
-              <Icon size={20} color={isActive ? '#ffffff' : '#cbd5e1'} />
-              <span>{item.name}</span>
+              <Icon size={20} color={isActive ? '#ffffff' : '#cbd5e1'} style={{ flexShrink: 0 }} />
+              {!isCollapsed && <span>{item.name}</span>}
             </button>
           );
         })}
@@ -77,18 +115,33 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, username, 
         <button
           onClick={handleSystemUpdate}
           disabled={updating}
-          style={styles.updateBtn}
+          style={{
+            ...styles.updateBtn,
+            justifyContent: isCollapsed ? 'center' : 'center',
+            padding: isCollapsed ? '10px' : '10px 14px',
+            transition: 'all 0.2s ease',
+          }}
+          title={isCollapsed ? "Cập nhật hệ thống" : undefined}
         >
-          <RefreshCw size={16} className={updating ? 'spin' : ''} />
-          <span>{updating ? 'Đang cập nhật...' : 'Cập nhật hệ thống'}</span>
+          <RefreshCw size={16} className={updating ? 'spin' : ''} style={{ flexShrink: 0 }} />
+          {!isCollapsed && <span>{updating ? 'Đang cập nhật...' : 'Cập nhật hệ thống'}</span>}
         </button>
-        {updateMsg && <p style={styles.updateMsg}>{updateMsg}</p>}
+        {updateMsg && !isCollapsed && <p style={styles.updateMsg}>{updateMsg}</p>}
 
         <hr style={styles.divider} />
 
-        <button onClick={onLogout} style={styles.logoutBtn}>
-          <LogOut size={16} />
-          <span>Đăng xuất</span>
+        <button 
+          onClick={onLogout} 
+          style={{
+            ...styles.logoutBtn,
+            justifyContent: isCollapsed ? 'center' : 'center',
+            padding: isCollapsed ? '10px' : '12px',
+            transition: 'all 0.2s ease',
+          }}
+          title={isCollapsed ? "Đăng xuất" : undefined}
+        >
+          <LogOut size={16} style={{ flexShrink: 0 }} />
+          {!isCollapsed && <span>Đăng xuất</span>}
         </button>
       </div>
     </aside>
@@ -115,8 +168,21 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '12px',
     marginBottom: '24px',
   },
+  collapseToggleBtn: {
+    background: 'rgba(255, 255, 255, 0.04)',
+    border: '1px solid rgba(148, 163, 184, 0.15)',
+    borderRadius: '50%',
+    color: '#cbd5e1',
+    width: '32px',
+    height: '32px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
   title: {
-    fontSize: '22px',
+    fontSize: '20px',
     fontWeight: 800,
     color: '#f1f5f9',
     letterSpacing: '-0.5px',

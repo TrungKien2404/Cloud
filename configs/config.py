@@ -12,6 +12,7 @@ class Config:
         self.data = self._config.get('data', {})
         self.etl = self._config.get('etl', {})
         self.ml = self._config.get('ml', {})
+        self.email = self._config.get('email', {})
         
         # Override Databricks paths for local testing
         if self.data.get('raw_data_path', '').startswith('/dbfs'):

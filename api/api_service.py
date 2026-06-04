@@ -16,7 +16,7 @@
 #
 # ====================================================================
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Header
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -129,15 +129,25 @@ class UserRegister(BaseModel):
     username: str
     email: str
     password: str
+    captcha_id: str
+    captcha_code: str
 
 class UserLogin(BaseModel):
     username: str
     password: str
+    captcha_id: str
+    captcha_code: str
 
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str
     username: str
+
+class PortfolioAllocationRequest(BaseModel):
+    capital: float
+    risk_profile: str
+    tickers: List[str]
+
 WATCHLIST_ORDER_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "watchlist_order.json")
 
 def load_watchlist_order() -> List[str]:
@@ -273,6 +283,139 @@ scheduler_thread.start()
 
 # ========== AUTH SERVICE HELPER & ENDPOINTS ==========
 
+import smtplib
+import random
+import uuid
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+# Email Configuration from configs/config.yaml or environment variables
+SMTP_HOST = config.email.get("smtp_host") or os.environ.get("SMTP_HOST", "")
+SMTP_PORT = int(config.email.get("smtp_port") or os.environ.get("SMTP_PORT", "587"))
+SMTP_USER = config.email.get("smtp_user") or os.environ.get("SMTP_USER", "")
+SMTP_PASSWORD = config.email.get("smtp_password") or os.environ.get("SMTP_PASSWORD", "")
+SMTP_FROM = config.email.get("smtp_from") or os.environ.get("SMTP_FROM", SMTP_USER)
+
+SENT_EMAILS_LOG = os.path.join(BASE_DIR, "data", "sent_emails.log")
+
+def send_verification_email(to_email: str, username: str, code: str):
+    subject = "[Stock AI] Xác thực tài khoản đăng ký mới"
+    body = f"""Chào {username},
+
+Cảm ơn bạn đã đăng ký tài khoản trên hệ thống Stock AI.
+Mã xác thực OTP của bạn là: {code}
+
+Mã này có hiệu lực trong vòng 15 phút. Vui lòng nhập mã này trên giao diện để hoàn tất kích hoạt tài khoản.
+
+Trân trọng,
+Đội ngũ phát triển Stock AI
+"""
+    
+    sent_successfully = False
+    is_configured = (
+        SMTP_HOST and 
+        SMTP_USER and 
+        SMTP_PASSWORD and 
+        "your-email" not in SMTP_USER and 
+        "your-app-password" not in SMTP_PASSWORD
+    )
+    if is_configured:
+        try:
+            msg = MIMEMultipart()
+            msg["From"] = SMTP_FROM
+            msg["To"] = to_email
+            msg["Subject"] = subject
+            msg.attach(MIMEText(body, "plain", "utf-8"))
+            
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+                server.starttls()
+                server.login(SMTP_USER, SMTP_PASSWORD)
+                server.send_message(msg)
+            logger.info(f"📧 [EMAIL] Đã gửi email xác thực thành công tới {to_email}")
+            sent_successfully = True
+        except Exception as e:
+            logger.error(f"❌ [EMAIL] Lỗi khi gửi email qua SMTP: {str(e)}")
+            
+    if not sent_successfully:
+        try:
+            os.makedirs(os.path.dirname(SENT_EMAILS_LOG), exist_ok=True)
+            log_entry = f"========================================\nTIME: {datetime.now().isoformat()}\nTO: {to_email}\nSUBJECT: {subject}\n\n{body}========================================\n\n"
+            with open(SENT_EMAILS_LOG, "a", encoding="utf-8") as f:
+                f.write(log_entry)
+            logger.info(f"💾 [EMAIL FALLBACK] Email debug đã được ghi vào {SENT_EMAILS_LOG}")
+        except Exception as log_err:
+            logger.error(f"❌ [EMAIL FALLBACK] Không thể ghi email debug vào file: {str(log_err)}")
+        
+        print(f"\n📢 [SMTP MOCK EMAIL] GỬI ĐẾN: {to_email}")
+        print(f"📢 [SMTP MOCK EMAIL] TIÊU ĐỀ: {subject}")
+        print(f"📢 [SMTP MOCK EMAIL] MÃ OTP XÁC THỰC: {code}")
+        print(f"📢 [SMTP MOCK EMAIL] Chi tiết xem tại: {SENT_EMAILS_LOG}\n")
+
+# CAPTCHA Store: stores {captcha_id: (captcha_text, expiry_timestamp)}
+CAPTCHA_STORE = {}
+
+def generate_svg_captcha() -> tuple[str, str]:
+    """
+    Tạo một mã CAPTCHA ngẫu nhiên và render dưới dạng ảnh SVG.
+    Trả về: (captcha_id, svg_content)
+    """
+    chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    captcha_text = "".join(random.choices(chars, k=5))
+    captcha_id = str(uuid.uuid4())
+    
+    width = 130
+    height = 42
+    
+    svg = f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" xmlns="http://www.w3.org/2000/svg" style="background: #1e293b; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 8px; user-select: none;">'
+    
+    # 1. Noise lines
+    for _ in range(4):
+        x1 = random.randint(0, width)
+        y1 = random.randint(0, height)
+        x2 = random.randint(0, width)
+        y2 = random.randint(0, height)
+        stroke_color = f"rgb({random.randint(70,160)}, {random.randint(70,160)}, {random.randint(150,255)})"
+        stroke_width = random.randint(1, 2)
+        svg += f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{stroke_color}" stroke-width="{stroke_width}" stroke-opacity="0.6" />'
+        
+    # 2. Noise dots
+    for _ in range(25):
+        cx = random.randint(0, width)
+        cy = random.randint(0, height)
+        r = random.randint(1, 2)
+        fill_color = f"rgb({random.randint(100,200)}, {random.randint(100,200)}, {random.randint(100,200)})"
+        svg += f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="{fill_color}" fill-opacity="0.5" />'
+        
+    # 3. Draw text characters
+    for i, char in enumerate(captcha_text):
+        x = 12 + i * 22 + random.randint(-2, 2)
+        y = 28 + random.randint(-4, 4)
+        angle = random.randint(-20, 20)
+        fill_color = f"rgb({random.randint(150,255)}, {random.randint(150,255)}, {random.randint(150,255)})"
+        svg += f'<text x="{x}" y="{y}" fill="{fill_color}" font-size="24" font-family="monospace" font-weight="bold" transform="rotate({angle} {x} {y})">{char}</text>'
+        
+    svg += "</svg>"
+    
+    CAPTCHA_STORE[captcha_id] = (captcha_text.lower(), time.time() + 300)
+    
+    now = time.time()
+    expired = [k for k, (_, exp) in CAPTCHA_STORE.items() if now > exp]
+    for k in expired:
+        CAPTCHA_STORE.pop(k, None)
+        
+    return captcha_id, svg
+
+def verify_captcha_code(captcha_id: str, code: str) -> bool:
+    if not captcha_id or not code:
+        return False
+    entry = CAPTCHA_STORE.pop(captcha_id, None)
+    if not entry:
+        return False
+    expected_text, expiry = entry
+    if time.time() > expiry:
+        return False
+    return expected_text == code.strip().lower()
+
 USERS_FILE = os.environ.get(
     "USERS_FILE",
     os.path.join(BASE_DIR, ".streamlit", "users.json")
@@ -298,12 +441,25 @@ def _save_users(users: dict):
     except Exception as e:
         logger.error(f"Lỗi khi lưu danh sách users: {str(e)}")
 
+@app.get("/api/auth/captcha")
+def get_captcha():
+    captcha_id, svg_content = generate_svg_captcha()
+    return {
+        "captcha_id": captcha_id,
+        "captcha_svg": svg_content
+    }
+
 @app.post("/api/auth/register")
 def register(user_data: UserRegister):
     username = user_data.username.strip()
     email = user_data.email.strip()
     password = user_data.password
+    captcha_id = user_data.captcha_id
+    captcha_code = user_data.captcha_code
     
+    if not verify_captcha_code(captcha_id, captcha_code):
+        raise HTTPException(status_code=400, detail="Mã xác thực CAPTCHA không chính xác hoặc đã hết hạn.")
+        
     if len(username) < 3:
         raise HTTPException(status_code=400, detail="Tên đăng nhập phải có ít nhất 3 ký tự.")
     if len(password) < 6:
@@ -313,19 +469,33 @@ def register(user_data: UserRegister):
     if username in users or username.lower() == "admin":
         raise HTTPException(status_code=400, detail="Tên đăng nhập đã tồn tại.")
         
+    # Check if email is already taken
+    for u, data in users.items():
+        if data.get("email", "").lower() == email.lower():
+            raise HTTPException(status_code=400, detail="Email này đã được sử dụng.")
+            
     users[username] = {
         "email": email,
         "password_hash": _hash_password(password),
         "created_at": datetime.now().isoformat()
     }
     _save_users(users)
-    return {"status": "success", "message": "Đăng ký thành công!"}
+    
+    return {
+        "status": "success", 
+        "message": "Đăng ký tài khoản thành công! Bây giờ bạn có thể đăng nhập."
+    }
 
 @app.post("/api/auth/login", response_model=TokenResponse)
 def login(user_data: UserLogin):
     username = user_data.username.strip()
     password = user_data.password
+    captcha_id = user_data.captcha_id
+    captcha_code = user_data.captcha_code
     
+    if not verify_captcha_code(captcha_id, captcha_code):
+        raise HTTPException(status_code=400, detail="Mã xác thực CAPTCHA không chính xác hoặc đã hết hạn.")
+        
     # Bypass admin mặc định nếu chưa cấu hình secrets
     if username == "admin" and password == "admin123":
         return TokenResponse(
@@ -955,10 +1125,54 @@ def trigger_update(background_tasks: BackgroundTasks):
 
 # ========== CHATBOT BACKEND ENDPOINTS FOR REACT FRONTEND ==========
 
+CHAT_HISTORY_FILE = os.path.join(BASE_DIR, "data", "chat_history.json")
+
+def _load_chat_history() -> dict:
+    try:
+        if os.path.exists(CHAT_HISTORY_FILE):
+            with open(CHAT_HISTORY_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.error(f"Lỗi khi load chat history: {str(e)}")
+    return {}
+
+def _save_chat_history(history: dict):
+    try:
+        os.makedirs(os.path.dirname(CHAT_HISTORY_FILE), exist_ok=True)
+        with open(CHAT_HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Lỗi khi lưu chat history: {str(e)}")
+
+def get_current_user(authorization: Optional[str] = Header(None)) -> str:
+    """
+    Xác thực token đơn giản từ Header và trả về username của tài khoản đang đăng nhập.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Token xác thực không tồn tại. Vui lòng đăng nhập lại.")
+    try:
+        parts = authorization.split(" ")
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            raise HTTPException(status_code=401, detail="Định dạng token không hợp lệ.")
+        token = parts[1]
+        if token == "admin_mock_token_123456":
+            return "admin"
+        if not token.startswith("mock_token_"):
+            raise HTTPException(status_code=401, detail="Token không hợp lệ.")
+        token_parts = token.split("_")
+        if len(token_parts) < 4:
+            raise HTTPException(status_code=401, detail="Token không hợp lệ.")
+        # Tách lấy username từ format mock_token_{username}_{timestamp}
+        username = "_".join(token_parts[2:-1])
+        return username
+    except Exception:
+        raise HTTPException(status_code=401, detail="Xác thực token thất bại.")
+
 class ChatRequest(BaseModel):
     message: str
     mode: str = "Nhanh"
     model: str = "qwen2.5:1.5b"
+    thread_id: Optional[str] = None
 
 @app.get("/api/chat/status")
 def get_chat_status():
@@ -981,8 +1195,450 @@ def get_chat_models():
         pass
     return {"models": ["qwen2.5:1.5b", "gemma2:2b", "llama3:latest"]}
 
+DEFAULT_GREETING = "Xin chào! Tôi là Trợ lý Stock AI hoạt động hoàn toàn cục bộ trên máy tính của bạn. Hôm nay tôi có thể giúp gì cho bạn? Bạn muốn phân tích nhanh hay trò chuyện chuyên sâu về mã cổ phiếu nào?"
+
+def _append_to_thread(username: str, thread_id: Optional[str], user_msg: str, assistant_msg: str) -> tuple[str, str]:
+    history = _load_chat_history()
+    if username not in history:
+        history[username] = {"threads": {}}
+    elif "threads" not in history[username]:
+        history[username]["threads"] = {}
+        
+    threads = history[username]["threads"]
+    
+    # Tạo thread mới nếu không tìm thấy thread_id
+    if not thread_id or thread_id not in threads:
+        if not thread_id:
+            thread_id = str(uuid.uuid4())
+        threads[thread_id] = {
+            "id": thread_id,
+            "title": "Cuộc trò chuyện mới",
+            "created_at": datetime.now().isoformat(),
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": DEFAULT_GREETING
+                }
+            ]
+        }
+        
+    thread = threads[thread_id]
+    thread["messages"].append({"role": "user", "content": user_msg})
+    thread["messages"].append({"role": "assistant", "content": assistant_msg})
+    
+    # Đặt tiêu đề cuộc trò chuyện động dựa trên câu hỏi đầu tiên
+    if thread["title"] == "Cuộc trò chuyện mới":
+        import re
+        text_upper = user_msg.upper()
+        ticker_match = re.search(r'\b([A-Z]{3,5}(?:\.VN)?)\b', text_upper)
+        if ticker_match:
+            thread["title"] = f"Phân tích {ticker_match.group(1)}"
+        else:
+            snippet = user_msg.strip()
+            if len(snippet) > 25:
+                snippet = snippet[:25] + "..."
+            thread["title"] = snippet
+            
+    _save_chat_history(history)
+    return thread_id, thread["title"]
+
+@app.get("/api/chat/threads")
+def get_chat_threads(username: str = Depends(get_current_user)):
+    history = _load_chat_history()
+    user_data = history.get(username, {"threads": {}})
+    threads = user_data.get("threads", {})
+    
+    thread_list = []
+    for tid, t in threads.items():
+        thread_list.append({
+            "id": t["id"],
+            "title": t["title"],
+            "created_at": t.get("created_at", "")
+        })
+        
+    thread_list.sort(key=lambda x: x["created_at"], reverse=True)
+    return {"threads": thread_list}
+
+@app.get("/api/chat/threads/{thread_id}")
+def get_chat_thread_details(thread_id: str, username: str = Depends(get_current_user)):
+    history = _load_chat_history()
+    user_data = history.get(username, {"threads": {}})
+    threads = user_data.get("threads", {})
+    
+    if thread_id not in threads:
+        new_thread = {
+            "id": thread_id,
+            "title": "Cuộc trò chuyện mới",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": DEFAULT_GREETING
+                }
+            ]
+        }
+        return new_thread
+        
+    return threads[thread_id]
+
+@app.post("/api/chat/threads")
+def create_chat_thread(username: str = Depends(get_current_user)):
+    history = _load_chat_history()
+    if username not in history:
+        history[username] = {"threads": {}}
+    elif "threads" not in history[username]:
+        history[username]["threads"] = {}
+        
+    thread_id = str(uuid.uuid4())
+    new_thread = {
+        "id": thread_id,
+        "title": "Cuộc trò chuyện mới",
+        "created_at": datetime.now().isoformat(),
+        "messages": [
+            {
+                "role": "assistant",
+                "content": DEFAULT_GREETING
+            }
+        ]
+    }
+    history[username]["threads"][thread_id] = new_thread
+    _save_chat_history(history)
+    return new_thread
+
+@app.delete("/api/chat/threads/{thread_id}")
+def delete_chat_thread(thread_id: str, username: str = Depends(get_current_user)):
+    history = _load_chat_history()
+    user_data = history.get(username, {"threads": {}})
+    threads = user_data.get("threads", {})
+    
+    if thread_id in threads:
+        threads.pop(thread_id)
+        _save_chat_history(history)
+        return {"status": "success", "message": f"Đã xóa cuộc trò chuyện {thread_id}."}
+    else:
+        raise HTTPException(status_code=404, detail="Không tìm thấy cuộc trò chuyện để xóa.")
+
+@app.put("/api/chat/threads/{thread_id}/clear")
+def clear_chat_thread(thread_id: str, username: str = Depends(get_current_user)):
+    history = _load_chat_history()
+    user_data = history.get(username, {"threads": {}})
+    threads = user_data.get("threads", {})
+    
+    if thread_id in threads:
+        threads[thread_id]["messages"] = [
+            {
+                "role": "assistant",
+                "content": DEFAULT_GREETING
+            }
+        ]
+        threads[thread_id]["title"] = "Cuộc trò chuyện mới"
+        _save_chat_history(history)
+        return {"status": "success", "message": f"Đã dọn dẹp cuộc trò chuyện {thread_id}.", "thread": threads[thread_id]}
+    else:
+        raise HTTPException(status_code=404, detail="Không tìm thấy cuộc trò chuyện để dọn dẹp.")
+
+FALLBACK_INDICATORS = {
+    "AAPL": {"return": 0.16, "volatility": 0.22, "risk": "Medium", "name": "Apple Inc."},
+    "TSLA": {"return": 0.22, "volatility": 0.45, "risk": "High", "name": "Tesla, Inc."},
+    "MSFT": {"return": 0.15, "volatility": 0.20, "risk": "Medium", "name": "Microsoft Corporation"},
+    "AMZN": {"return": 0.14, "volatility": 0.26, "risk": "Medium", "name": "Amazon.com, Inc."},
+    "GOOGL": {"return": 0.13, "volatility": 0.24, "risk": "Medium", "name": "Alphabet Inc."},
+    "FPT.VN": {"return": 0.18, "volatility": 0.20, "risk": "Medium", "name": "CTCP FPT (FPT Corp)"},
+    "HPG.VN": {"return": 0.12, "volatility": 0.28, "risk": "High", "name": "CTCP Tập đoàn Hòa Phát"},
+    "VNM.VN": {"return": 0.08, "volatility": 0.16, "risk": "Low", "name": "CTCP Sữa Việt Nam (Vinamilk)"},
+    "VIC.VN": {"return": 0.06, "volatility": 0.26, "risk": "High", "name": "CTCP Tập đoàn Vingroup"},
+    "TCB.VN": {"return": 0.14, "volatility": 0.24, "risk": "Medium", "name": "Ngân hàng TCB"},
+    "HDB.VN": {"return": 0.13, "volatility": 0.23, "risk": "Medium", "name": "Ngân hàng HDBank"},
+    "BTC-USD": {"return": 0.45, "volatility": 0.60, "risk": "High", "name": "Bitcoin USD"},
+    "ETH-USD": {"return": 0.38, "volatility": 0.65, "risk": "High", "name": "Ethereum USD"},
+    "GC=F": {"return": 0.09, "volatility": 0.14, "risk": "Low", "name": "Vàng thế giới (Gold)"},
+    "CL=F": {"return": 0.07, "volatility": 0.30, "risk": "High", "name": "Dầu thô (Crude Oil)"},
+}
+
+def sanitize_float(val, default=0.0):
+    try:
+        import math
+        if val is None or pd.isna(val) or np.isinf(val) or math.isnan(val):
+            return default
+        return float(val)
+    except:
+        return default
+
+def adjust_weights_with_caps(weights: Dict[str, float], stats: Dict[str, dict], max_cap: float = 0.35, crypto_cap: Optional[float] = None, min_cap: float = 0.0):
+    tickers = list(weights.keys())
+    n = len(tickers)
+    if n <= 1:
+        return
+        
+    for _ in range(10):
+        redistribute_val = 0.0
+        active_count = 0
+        
+        for t in tickers:
+            w = weights[t]
+            cap = max_cap
+            vol = stats[t]["volatility"]
+            is_crypto = (vol > 0.50 or "-USD" in t)
+            if is_crypto and crypto_cap is not None:
+                cap = min(cap, crypto_cap)
+                
+            if w > cap:
+                redistribute_val += (w - cap)
+                weights[t] = cap
+            elif w < min_cap:
+                redistribute_val -= (min_cap - w)
+                weights[t] = min_cap
+            else:
+                active_count += 1
+                
+        if abs(redistribute_val) < 0.0001 or active_count == 0:
+            break
+            
+        share = redistribute_val / active_count
+        for t in tickers:
+            vol = stats[t]["volatility"]
+            is_crypto = (vol > 0.50 or "-USD" in t)
+            cap = max_cap
+            if is_crypto and crypto_cap is not None:
+                cap = min(cap, crypto_cap)
+                
+            if weights[t] > min_cap and weights[t] < cap:
+                weights[t] += share
+
+def optimize_portfolio(tickers: List[str], close_series: Dict[str, pd.Series], risk_profile: str):
+    n = len(tickers)
+    if n == 0:
+        return {}, {}
+    
+    stats = {}
+    for t in tickers:
+        if t in close_series:
+            prices = close_series[t]
+            asset_returns = prices.pct_change().dropna()
+            if len(asset_returns) > 10:
+                annual_ret = float(asset_returns.mean() * 252)
+                annual_vol = float(asset_returns.std() * np.sqrt(252))
+            else:
+                fb = FALLBACK_INDICATORS.get(t, {"return": 0.12, "volatility": 0.25})
+                annual_ret = fb["return"]
+                annual_vol = fb["volatility"]
+        else:
+            fb = FALLBACK_INDICATORS.get(t, {"return": 0.12, "volatility": 0.25})
+            annual_ret = fb["return"]
+            annual_vol = fb["volatility"]
+            
+        annual_ret = sanitize_float(annual_ret, 0.12)
+        annual_vol = sanitize_float(annual_vol, 0.25)
+        if annual_vol <= 0:
+            annual_vol = 0.25
+            
+        stats[t] = {
+            "return": annual_ret,
+            "volatility": annual_vol,
+        }
+        
+    weights = {}
+    if risk_profile == "An toàn":
+        raw_weights = {}
+        for t in tickers:
+            vol = stats[t]["volatility"]
+            if vol > 0.45:
+                penalty_factor = 4.0
+            elif vol > 0.30:
+                penalty_factor = 2.0
+            else:
+                penalty_factor = 1.0
+                
+            raw_weights[t] = 1.0 / (vol * penalty_factor)
+            
+        sum_weights = sum(raw_weights.values())
+        for t in tickers:
+            weights[t] = raw_weights[t] / sum_weights
+            
+        adjust_weights_with_caps(weights, stats, max_cap=0.25, crypto_cap=0.05, min_cap=0.02)
+
+    elif risk_profile == "Tăng trưởng":
+        raw_weights = {}
+        for t in tickers:
+            ret = stats[t]["return"]
+            score = max(0.02, ret) ** 2
+            raw_weights[t] = score
+            
+        sum_weights = sum(raw_weights.values())
+        for t in tickers:
+            weights[t] = raw_weights[t] / sum_weights
+            
+        adjust_weights_with_caps(weights, stats, max_cap=0.40, min_cap=0.05)
+
+    else: # Cân bằng
+        raw_weights = {}
+        for t in tickers:
+            ret = stats[t]["return"]
+            vol = stats[t]["volatility"]
+            rf = 0.04
+            sharpe = (ret - rf) / vol if vol > 0 else 0.1
+            raw_weights[t] = max(0.05, sharpe)
+            
+        sum_weights = sum(raw_weights.values())
+        for t in tickers:
+            weights[t] = raw_weights[t] / sum_weights
+            
+        adjust_weights_with_caps(weights, stats, max_cap=0.30, crypto_cap=0.12, min_cap=0.05)
+        
+    return weights, stats
+
+def compute_portfolio_volatility(weights: Dict[str, float], close_series: Dict[str, pd.Series], stats: Dict[str, dict]) -> float:
+    tickers = list(weights.keys())
+    valid_tickers = [t for t in tickers if t in close_series]
+    
+    if len(valid_tickers) == len(weights) and len(valid_tickers) > 1:
+        returns_dict = {}
+        for t in valid_tickers:
+            returns_dict[t] = close_series[t].pct_change()
+        
+        df_returns = pd.DataFrame(returns_dict).fillna(0.0)
+        
+        if len(df_returns) > 10:
+            w_vector = np.array([weights[t] for t in valid_tickers])
+            cov_matrix = df_returns[valid_tickers].cov() * 252
+            portfolio_variance = np.dot(w_vector.T, np.dot(cov_matrix, w_vector))
+            vol = float(np.sqrt(portfolio_variance))
+            if not pd.isna(vol) and not np.isinf(vol):
+                return vol
+                
+    w_vol = sum(weights[t] * stats[t]["volatility"] for t in weights)
+    return float(w_vol * 0.85)
+
+@app.post("/api/portfolio/allocate")
+def allocate_portfolio(req: PortfolioAllocationRequest, username: str = Depends(get_current_user)):
+    tickers = [t.upper().strip() for t in req.tickers if t.strip()]
+    if not tickers:
+        raise HTTPException(status_code=400, detail="Vui lòng cung cấp ít nhất một mã tài sản.")
+        
+    close_series = {}
+    for t in tickers:
+        try:
+            ticker_obj = yf.Ticker(t)
+            df = ticker_obj.history(period="1y")
+            if not df.empty and "Close" in df.columns:
+                close_series[t] = df["Close"]
+        except Exception as e:
+            logger.error(f"Error fetching yfinance history for {t}: {str(e)}")
+            
+    weights, stats = optimize_portfolio(tickers, close_series, req.risk_profile)
+    
+    port_return = sum(weights[t] * stats[t]["return"] for t in tickers)
+    port_vol = compute_portfolio_volatility(weights, close_series, stats)
+    
+    weighted_vol = sum(weights[t] * stats[t]["volatility"] for t in tickers)
+    diversification_index = float((weighted_vol - port_vol) / weighted_vol * 100) if weighted_vol > 0 else 0.0
+    risk_score = min(10.0, max(1.0, port_vol * 20.0))
+    
+    corr_matrix = []
+    for t1 in tickers:
+        row = []
+        for t2 in tickers:
+            if t1 == t2:
+                row.append(1.0)
+            elif t1 in close_series and t2 in close_series:
+                s1 = close_series[t1].pct_change()
+                s2 = close_series[t2].pct_change()
+                merged = pd.concat([s1, s2], axis=1).dropna()
+                if len(merged) > 10:
+                    corr_val = float(merged.iloc[:, 0].corr(merged.iloc[:, 1]))
+                    corr_val = sanitize_float(corr_val, 0.15)
+                    row.append(corr_val)
+                else:
+                    row.append(0.15)
+            else:
+                row.append(0.15)
+        corr_matrix.append(row)
+        
+    allocations = []
+    for t in tickers:
+        w = weights[t]
+        allocated_capital = w * req.capital
+        vol = stats[t]["volatility"]
+        
+        if vol > 0.45:
+            asset_risk = "High (Cao)"
+        elif vol > 0.25:
+            asset_risk = "Medium (Trung bình)"
+        else:
+            asset_risk = "Low (Thấp)"
+            
+        asset_name = FALLBACK_INDICATORS.get(t, {}).get("name", t)
+        if w > 0.25:
+            explanation = f"Tài sản nền tảng cốt lõi của danh mục, chiếm tỷ trọng cao để dẫn dắt hiệu suất đầu tư."
+        elif "GC=F" in t:
+            explanation = f"Công cụ phòng thủ và trú ẩn tài sản an toàn, giúp giảm thiểu rủi ro biến động chung."
+        elif "-USD" in t:
+            explanation = f"Tài sản đầu cơ có tiềm năng sinh lời đột phá cao nhưng rủi ro lớn, được phân bổ tỷ trọng thấp."
+        elif vol < 0.20:
+            explanation = f"Tài sản phòng thủ ổn định, giúp cân đối rủi ro biến động cho danh mục."
+        else:
+            explanation = f"Cổ phiếu tăng trưởng giúp gia tăng tỷ suất sinh lời kỳ vọng cho danh mục."
+            
+        allocations.append({
+            "ticker": t,
+            "name": asset_name,
+            "weight": sanitize_float(w * 100),
+            "amount": sanitize_float(allocated_capital),
+            "expected_return": sanitize_float(stats[t]["return"] * 100),
+            "volatility": sanitize_float(vol * 100),
+            "risk_level": asset_risk,
+            "explanation": explanation
+        })
+        
+    if req.risk_profile == "An toàn":
+        summary_explanation = (
+            "Danh mục này được thiết kế với mục tiêu bảo toàn vốn tối đa. "
+            "Phần lớn tỷ trọng được phân bổ vào các tài sản phòng thủ vững chắc có độ biến động thấp như Vàng (Gold) và các cổ phiếu Blue-chip. "
+            "Các tài sản mạo hiểm cao như tiền điện tử hay cổ phiếu chu kỳ được hạn chế ở mức tối thiểu để giảm thiểu rủi ro thua lỗ khi thị trường gặp biến động mạnh."
+        )
+    elif req.risk_profile == "Tăng trưởng":
+        summary_explanation = (
+            "Danh mục này được tối ưu hóa cho mục tiêu gia tăng tài sản mạnh mẽ. "
+            "Tỷ trọng lớn tập trung vào các tài sản có lợi nhuận kỳ vọng lịch sử cao nhất như cổ phiếu tăng trưởng và tiền điện tử. "
+            "Độ biến động của danh mục rất cao, phù hợp với các nhà đầu tư có khẩu vị rủi ro cao và tầm nhìn đầu tư dài hạn."
+        )
+    else:
+        summary_explanation = (
+            "Danh mục này hướng tới sự cân bằng tối ưu giữa rủi ro và lợi nhuận bằng cách áp dụng tối đa hóa tỷ số Sharpe. "
+            "Cơ cấu tài sản phân chia hợp lý giữa các cổ phiếu có nền tảng tốt, cổ phiếu tăng trưởng và một phần nhỏ tài sản phòng thủ hoặc đầu cơ. "
+            "Sự kết hợp này giúp tối ưu hóa lợi nhuận thu về trên mỗi đơn vị rủi ro phải gánh chịu."
+        )
+        
+    return {
+        "summary": {
+            "total_capital": sanitize_float(req.capital),
+            "expected_return": sanitize_float(port_return * 100),
+            "portfolio_volatility": sanitize_float(port_vol * 100),
+            "risk_score": sanitize_float(risk_score),
+            "diversification_index": sanitize_float(diversification_index),
+            "explanation": summary_explanation
+        },
+        "allocations": allocations,
+        "correlation": {
+            "assets": tickers,
+            "matrix": [[sanitize_float(v, 0.15) for v in row] for row in corr_matrix]
+        }
+    }
+
+
 @app.post("/api/chat")
-def post_chat_response(req: ChatRequest):
+def post_chat_response(req: ChatRequest, username: str = Depends(get_current_user)):
+    res = _post_chat_response_inner(req)
+    response_text = res.get("response", "")
+    
+    thread_id, thread_title = _append_to_thread(username, req.thread_id, req.message, response_text)
+    
+    return {
+        "response": response_text,
+        "thread_id": thread_id,
+        "thread_title": thread_title
+    }
+
+def _post_chat_response_inner(req: ChatRequest):
     import requests
     import re
     

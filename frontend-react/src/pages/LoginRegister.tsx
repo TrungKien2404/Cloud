@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TrendingUp, Lock, User, Mail, ShieldAlert } from 'lucide-react';
 import api from '../api';
 
@@ -19,15 +19,35 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onLoginSuccess }) => {
   const [regPass, setRegPass] = useState('');
   const [regConfirmPass, setRegConfirmPass] = useState('');
 
+  // Captcha State
+  const [captchaId, setCaptchaId] = useState('');
+  const [captchaSvg, setCaptchaSvg] = useState('');
+  const [captchaInput, setCaptchaInput] = useState('');
+
   // Status State
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const fetchCaptcha = async () => {
+    try {
+      const res = await api.get('/api/auth/captcha');
+      setCaptchaId(res.data.captcha_id);
+      setCaptchaSvg(res.data.captcha_svg);
+      setCaptchaInput('');
+    } catch (err) {
+      console.error('Lỗi khi tải CAPTCHA:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchCaptcha();
+  }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!loginUser.trim() || !loginPass) {
-      setErrorMsg('Vui lòng nhập tên đăng nhập và mật khẩu.');
+    if (!loginUser.trim() || !loginPass || !captchaInput.trim()) {
+      setErrorMsg('Vui lòng nhập đầy đủ thông tin và mã CAPTCHA.');
       return;
     }
 
@@ -39,11 +59,14 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onLoginSuccess }) => {
       const res = await api.post('/api/auth/login', {
         username: loginUser,
         password: loginPass,
+        captcha_id: captchaId,
+        captcha_code: captchaInput,
       });
       const { access_token, username } = res.data;
       onLoginSuccess(username, access_token);
     } catch (err: any) {
-      setErrorMsg(err.response?.data?.detail || 'Sai tên đăng nhập hoặc mật khẩu!');
+      setErrorMsg(err.response?.data?.detail || 'Sai tên đăng nhập, mật khẩu hoặc mã CAPTCHA!');
+      fetchCaptcha(); // Refresh captcha khi đăng nhập thất bại
     } finally {
       setLoading(false);
     }
@@ -51,8 +74,8 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onLoginSuccess }) => {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!regUser.trim() || !regEmail.trim() || !regPass || !regConfirmPass) {
-      setErrorMsg('Vui lòng điền đầy đủ tất cả thông tin.');
+    if (!regUser.trim() || !regEmail.trim() || !regPass || !regConfirmPass || !captchaInput.trim()) {
+      setErrorMsg('Vui lòng điền đầy đủ tất cả thông tin và mã CAPTCHA.');
       return;
     }
     if (regPass !== regConfirmPass) {
@@ -65,25 +88,32 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onLoginSuccess }) => {
     setSuccessMsg('');
 
     try {
-      await api.post('/api/auth/register', {
+      const res = await api.post('/api/auth/register', {
         username: regUser,
         email: regEmail,
         password: regPass,
+        captcha_id: captchaId,
+        captcha_code: captchaInput,
       });
-      setSuccessMsg('Đăng ký tài khoản thành công! Hãy chuyển sang Đăng Nhập.');
+      setSuccessMsg(res.data.message || 'Đăng ký tài khoản thành công! Đang chuyển sang Đăng Nhập...');
+      
       // Clear register form
       setRegUser('');
       setRegEmail('');
       setRegPass('');
       setRegConfirmPass('');
-      // Switch tab after short delay
+      setCaptchaInput('');
+      
+      // Chuyển sang Tab đăng nhập sau 2s
       setTimeout(() => {
         setIsLoginTab(true);
         setErrorMsg('');
         setSuccessMsg('');
-      }, 3000);
+        fetchCaptcha(); // Lấy captcha mới cho trang đăng nhập
+      }, 2000);
     } catch (err: any) {
-      setErrorMsg(err.response?.data?.detail || 'Đăng ký thất bại. Tên đăng nhập có thể đã tồn tại.');
+      setErrorMsg(err.response?.data?.detail || 'Đăng ký thất bại. Tên đăng nhập hoặc email có thể đã tồn tại.');
+      fetchCaptcha(); // Refresh captcha khi lỗi
     } finally {
       setLoading(false);
     }
@@ -101,7 +131,7 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onLoginSuccess }) => {
         {/* Tab Header */}
         <div style={styles.tabHeader}>
           <button
-            onClick={() => { setIsLoginTab(true); setErrorMsg(''); setSuccessMsg(''); }}
+            onClick={() => { setIsLoginTab(true); setErrorMsg(''); setSuccessMsg(''); fetchCaptcha(); }}
             style={{
               ...styles.tabBtn,
               ...(isLoginTab ? styles.tabBtnActive : {}),
@@ -110,7 +140,7 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onLoginSuccess }) => {
             🔑 Đăng Nhập
           </button>
           <button
-            onClick={() => { setIsLoginTab(false); setErrorMsg(''); setSuccessMsg(''); }}
+            onClick={() => { setIsLoginTab(false); setErrorMsg(''); setSuccessMsg(''); fetchCaptcha(); }}
             style={{
               ...styles.tabBtn,
               ...(!isLoginTab ? styles.tabBtnActive : {}),
@@ -137,12 +167,12 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onLoginSuccess }) => {
           /* LOGIN FORM */
           <form onSubmit={handleLogin} style={styles.form}>
             <div className="form-group">
-              <label>Tên đăng nhập</label>
+              <label>Tên đăng nhập hoặc Email</label>
               <div style={styles.inputWrapper}>
                 <User size={18} color="#64748b" style={styles.inputIcon} />
                 <input
                   type="text"
-                  placeholder="Nhập username..."
+                  placeholder="Nhập username hoặc email..."
                   value={loginUser}
                   onChange={(e) => setLoginUser(e.target.value)}
                   className="form-input"
@@ -168,8 +198,43 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onLoginSuccess }) => {
               </div>
             </div>
 
+            <div className="form-group" style={{ textAlign: 'left', marginBottom: '16px' }}>
+              <label>Xác thực CAPTCHA</label>
+              <div style={styles.captchaRow}>
+                {captchaSvg ? (
+                  <div
+                    dangerouslySetInnerHTML={{ __html: captchaSvg }}
+                    style={styles.captchaImg}
+                    onClick={fetchCaptcha}
+                    title="Bấm để đổi mã khác"
+                  />
+                ) : (
+                  <div style={styles.captchaPlaceholder}>Đang tải...</div>
+                )}
+                <button
+                  type="button"
+                  onClick={fetchCaptcha}
+                  style={styles.captchaRefreshBtn}
+                  disabled={loading}
+                >
+                  🔄
+                </button>
+              </div>
+              <div style={styles.inputWrapper}>
+                <input
+                  type="text"
+                  placeholder="Nhập 5 ký tự CAPTCHA..."
+                  value={captchaInput}
+                  onChange={(e) => setCaptchaInput(e.target.value.toUpperCase())}
+                  className="form-input"
+                  style={styles.paddedInputNoIcon}
+                  disabled={loading}
+                />
+              </div>
+            </div>
+
             <button type="submit" className="btn btn-primary" style={styles.submitBtn} disabled={loading}>
-              {loading ? 'Đang xác thực...' : 'Đăng Nhập'}
+              {loading ? 'Đang đăng nhập...' : 'Đăng Nhập'}
             </button>
           </form>
         ) : (
@@ -234,6 +299,41 @@ const LoginRegister: React.FC<LoginRegisterProps> = ({ onLoginSuccess }) => {
                   onChange={(e) => setRegConfirmPass(e.target.value)}
                   className="form-input"
                   style={styles.paddedInput}
+                  disabled={loading}
+                />
+              </div>
+            </div>
+
+            <div className="form-group" style={{ textAlign: 'left', marginBottom: '16px' }}>
+              <label>Xác thực CAPTCHA</label>
+              <div style={styles.captchaRow}>
+                {captchaSvg ? (
+                  <div
+                    dangerouslySetInnerHTML={{ __html: captchaSvg }}
+                    style={styles.captchaImg}
+                    onClick={fetchCaptcha}
+                    title="Bấm để đổi mã khác"
+                  />
+                ) : (
+                  <div style={styles.captchaPlaceholder}>Đang tải...</div>
+                )}
+                <button
+                  type="button"
+                  onClick={fetchCaptcha}
+                  style={styles.captchaRefreshBtn}
+                  disabled={loading}
+                >
+                  🔄
+                </button>
+              </div>
+              <div style={styles.inputWrapper}>
+                <input
+                  type="text"
+                  placeholder="Nhập 5 ký tự CAPTCHA..."
+                  value={captchaInput}
+                  onChange={(e) => setCaptchaInput(e.target.value.toUpperCase())}
+                  className="form-input"
+                  style={styles.paddedInputNoIcon}
                   disabled={loading}
                 />
               </div>
@@ -353,6 +453,47 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: '20px',
     fontSize: '14px',
     textAlign: 'left',
+  },
+  captchaRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    marginBottom: '8px',
+  },
+  captchaImg: {
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  captchaPlaceholder: {
+    width: '130px',
+    height: '42px',
+    background: '#1e293b',
+    border: '1px solid rgba(148, 163, 184, 0.2)',
+    borderRadius: '8px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#64748b',
+    fontSize: '13px',
+  },
+  captchaRefreshBtn: {
+    background: 'rgba(255, 255, 255, 0.08)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: '8px',
+    padding: '8px 12px',
+    color: '#fff',
+    cursor: 'pointer',
+    fontSize: '16px',
+    height: '42px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'all 0.2s',
+  },
+  paddedInputNoIcon: {
+    paddingLeft: '14px',
+    width: '100%',
   },
 };
 

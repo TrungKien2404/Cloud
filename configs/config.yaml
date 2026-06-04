@@ -161,3 +161,11 @@ logging:
 
 # Environment
 environment: "production"  # development, staging, production
+
+# Email Configuration (SMTP) for Registration Verification
+email:
+  smtp_host: "smtp.gmail.com"
+  smtp_port: 587
+  smtp_user: "your-email@gmail.com"
+  smtp_password: "your-app-password" # Mật khẩu ứng dụng (App Password) từ Google Account
+  smtp_from: "your-email@gmail.com"

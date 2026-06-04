@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, AlertTriangle, Sparkles, Zap, Settings, RefreshCw } from 'lucide-react';
+import { Send, AlertTriangle, Sparkles, Zap, Settings, RefreshCw, Plus, Trash2, MessageSquare } from 'lucide-react';
 import api from '../api';
 
 interface Message {
@@ -8,28 +8,22 @@ interface Message {
 }
 
 const ChatAssistant: React.FC = () => {
-  const [messages, setMessages] = useState<Message[]>(() => {
-    const saved = localStorage.getItem('stock_ai_chat_messages');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error(e);
-      }
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      role: 'assistant',
+      content: 'Đang tải lịch sử trò chuyện...'
     }
-    return [
-      {
-        role: 'assistant',
-        content: 'Xin chào! Tôi là Trợ lý Stock AI hoạt động hoàn toàn cục bộ trên máy tính của bạn. Hôm nay tôi có thể giúp gì cho bạn? Bạn muốn phân tích nhanh hay trò chuyện chuyên sâu về mã cổ phiếu nào?'
-      }
-    ];
-  });
+  ]);
   const [inputText, setInputText] = useState('');
   const [analysisMode, setAnalysisMode] = useState<'Nhanh' | 'Thông minh'>(() => {
     const saved = localStorage.getItem('stock_ai_chat_analysis_mode');
     return (saved as 'Nhanh' | 'Thông minh') || 'Nhanh';
   });
   
+  // Threads State
+  const [threads, setThreads] = useState<{ id: string; title: string; created_at?: string }[]>([]);
+  const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
+
   // Advanced config states
   const [showConfig, setShowConfig] = useState(false);
   const [isOllamaReady, setIsOllamaReady] = useState(false);
@@ -47,14 +41,82 @@ const ChatAssistant: React.FC = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const fetchThreads = async (selectActiveId: string | null = null) => {
+    try {
+      const res = await api.get('/api/chat/threads');
+      const fetchedThreads = res.data.threads;
+      setThreads(fetchedThreads);
+      
+      if (selectActiveId) {
+        setCurrentThreadId(selectActiveId);
+        fetchThreadDetails(selectActiveId);
+      } else if (fetchedThreads.length > 0) {
+        setCurrentThreadId(fetchedThreads[0].id);
+        fetchThreadDetails(fetchedThreads[0].id);
+      } else {
+        handleCreateThread();
+      }
+    } catch (err) {
+      console.error('Lỗi khi tải danh sách cuộc trò chuyện:', err);
+    }
+  };
+
+  const fetchThreadDetails = async (threadId: string) => {
+    try {
+      const res = await api.get(`/api/chat/threads/${threadId}`);
+      setMessages(res.data.messages);
+    } catch (err) {
+      console.error('Lỗi khi tải chi tiết cuộc trò chuyện:', err);
+    }
+  };
+
+  const handleCreateThread = async () => {
+    try {
+      setSending(true);
+      const res = await api.post('/api/chat/threads');
+      const newThread = res.data;
+      setThreads(prev => [newThread, ...prev]);
+      setCurrentThreadId(newThread.id);
+      setMessages(newThread.messages);
+    } catch (err) {
+      console.error('Lỗi khi tạo cuộc trò chuyện mới:', err);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleDeleteThread = async (e: React.MouseEvent, threadId: string) => {
+    e.stopPropagation();
+    if (window.confirm('Bạn có chắc chắn muốn xóa cuộc trò chuyện này không?')) {
+      try {
+        await api.delete(`/api/chat/threads/${threadId}`);
+        const updatedThreads = threads.filter(t => t.id !== threadId);
+        setThreads(updatedThreads);
+        
+        if (currentThreadId === threadId) {
+          if (updatedThreads.length > 0) {
+            setCurrentThreadId(updatedThreads[0].id);
+            fetchThreadDetails(updatedThreads[0].id);
+          } else {
+            handleCreateThread();
+          }
+        }
+      } catch (err) {
+        console.error('Lỗi khi xóa cuộc trò chuyện:', err);
+        alert('Không thể xóa cuộc trò chuyện. Vui lòng thử lại.');
+      }
+    }
+  };
+
+  const handleSelectThread = (threadId: string) => {
+    if (threadId === currentThreadId || sending) return;
+    setCurrentThreadId(threadId);
+    fetchThreadDetails(threadId);
+  };
+
   useEffect(() => {
     scrollToBottom();
   }, [messages, sending]);
-
-  // Persist chat state variables to localStorage
-  useEffect(() => {
-    localStorage.setItem('stock_ai_chat_messages', JSON.stringify(messages));
-  }, [messages]);
 
   useEffect(() => {
     localStorage.setItem('stock_ai_chat_analysis_mode', analysisMode);
@@ -86,6 +148,7 @@ const ChatAssistant: React.FC = () => {
   };
 
   useEffect(() => {
+    fetchThreads();
     checkStatus();
     const interval = setInterval(checkStatus, 15000); // Check status every 15s
     return () => clearInterval(interval);
@@ -94,13 +157,11 @@ const ChatAssistant: React.FC = () => {
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || sending) return;
     
-    // Add user message
     const newMsg: Message = { role: 'user', content: text };
     setMessages(prev => [...prev, newMsg]);
     setInputText('');
     setSending(true);
 
-    // Check if mode is smart and Ollama is not ready
     if (analysisMode === 'Thông minh' && !isOllamaReady) {
       setTimeout(() => {
         setMessages(prev => [...prev, {
@@ -119,13 +180,33 @@ const ChatAssistant: React.FC = () => {
       const res = await api.post('/api/chat', {
         message: text,
         mode: analysisMode,
-        model: selectedModel
+        model: selectedModel,
+        thread_id: currentThreadId
       });
+
+      const { response, thread_id, thread_title } = res.data;
 
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: res.data.response
+        content: response
       }]);
+
+      if (thread_id) {
+        setCurrentThreadId(thread_id);
+        
+        setThreads(prev => {
+          const index = prev.findIndex(t => t.id === thread_id);
+          if (index !== -1) {
+            const updated = [...prev];
+            if (updated[index].title !== thread_title) {
+              updated[index] = { ...updated[index], title: thread_title };
+            }
+            return updated;
+          } else {
+            return [{ id: thread_id, title: thread_title, created_at: new Date().toISOString() }, ...prev];
+          }
+        });
+      }
     } catch (err: any) {
       console.error(err);
       setMessages(prev => [...prev, {
@@ -134,6 +215,23 @@ const ChatAssistant: React.FC = () => {
       }]);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleClearChat = async () => {
+    if (!currentThreadId) return;
+    if (window.confirm('Bạn có chắc chắn muốn dọn dẹp toàn bộ tin nhắn trong cuộc trò chuyện này không?')) {
+      try {
+        setSending(true);
+        const res = await api.put(`/api/chat/threads/${currentThreadId}/clear`);
+        setMessages(res.data.thread.messages);
+        setThreads(prev => prev.map(t => t.id === currentThreadId ? { ...t, title: res.data.thread.title } : t));
+      } catch (err) {
+        console.error('Lỗi khi dọn dẹp cuộc trò chuyện:', err);
+        alert('Không thể dọn dẹp cuộc trò chuyện. Vui lòng thử lại.');
+      } finally {
+        setSending(false);
+      }
     }
   };
 
@@ -199,26 +297,117 @@ const ChatAssistant: React.FC = () => {
     <div style={styles.container}>
       <header style={styles.header}>
         <div>
-          <h2 style={styles.title}>Trợ Lý AI Chat</h2>
+          <h2 style={styles.title}>Stock AI Assistant</h2>
           <p style={styles.subtitle}>Bộ não phân tích chứng khoán offline cục bộ & miễn phí</p>
         </div>
         
-        {/* Advanced Config Button */}
-        <button 
-          onClick={() => { setShowConfig(!showConfig); checkStatus(); }}
-          style={{
-            ...styles.configToggleBtn,
-            ...(showConfig ? styles.configToggleBtnActive : {})
-          }}
-        >
-          <Settings size={18} />
-          <span>Cấu hình nâng cao</span>
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          {/* Clear History Button */}
+          <button 
+            onClick={handleClearChat}
+            disabled={sending}
+            style={styles.clearHistoryBtn}
+          >
+            <span>🧹 Xóa lịch sử</span>
+          </button>
+
+          {/* Advanced Config Button */}
+          <button 
+            onClick={() => { setShowConfig(!showConfig); checkStatus(); }}
+            style={{
+              ...styles.configToggleBtn,
+              ...(showConfig ? styles.configToggleBtnActive : {})
+            }}
+          >
+            <Settings size={18} />
+            <span>Cấu hình nâng cao</span>
+          </button>
+        </div>
       </header>
   
       {/* Main Content Area */}
       <div style={styles.workspace}>
-        {/* Left Area - Chat Room */}
+        {/* Left Sidebar - Chat Threads */}
+        <div style={styles.chatSidebar}>
+          <button 
+            onClick={handleCreateThread}
+            disabled={sending}
+            style={styles.newChatBtn}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(168, 85, 247, 0.25))';
+              e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.6)';
+              e.currentTarget.style.color = '#ffffff';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.1))';
+              e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.4)';
+              e.currentTarget.style.color = '#cbd5e1';
+            }}
+          >
+            <Plus size={16} />
+            <span>Cuộc trò chuyện mới</span>
+          </button>
+          
+          <div style={styles.threadList}>
+            {threads.map((thread) => {
+              const isActive = thread.id === currentThreadId;
+              return (
+                <div
+                  key={thread.id}
+                  onClick={() => handleSelectThread(thread.id)}
+                  style={{
+                    ...styles.threadItem,
+                    ...(isActive ? styles.activeThreadItem : {}),
+                  }}
+                  onMouseOver={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                    }
+                  }}
+                  onMouseOut={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.borderColor = 'transparent';
+                    }
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', overflow: 'hidden', flexGrow: 1 }}>
+                    <MessageSquare 
+                      size={14} 
+                      style={{ 
+                        color: isActive ? '#818cf8' : '#64748b', 
+                        marginRight: '8px', 
+                        flexShrink: 0 
+                      }} 
+                    />
+                    <span style={styles.threadTitle} title={thread.title}>
+                      {thread.title}
+                    </span>
+                  </div>
+                  
+                  <button
+                    onClick={(e) => handleDeleteThread(e, thread.id)}
+                    style={styles.deleteThreadBtn}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.color = '#ef4444';
+                      e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.color = '#64748b';
+                      e.currentTarget.style.background = 'transparent';
+                    }}
+                    title="Xóa cuộc hội thoại"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Right Area - Chat Room */}
         <div style={styles.chatSection}>
           {/* Chat Messages Log */}
           <div className="glass-card" style={styles.chatWindow}>
@@ -416,6 +605,20 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: '16px',
     flexShrink: 0,
   },
+  clearHistoryBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '10px 16px',
+    background: 'rgba(239, 68, 68, 0.1)',
+    border: '1px solid rgba(239, 68, 68, 0.3)',
+    borderRadius: '10px',
+    color: '#fca5a5',
+    fontSize: '13px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
   title: {
     fontSize: '28px',
     fontWeight: 900,
@@ -445,6 +648,79 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'rgba(99, 102, 241, 0.2)',
     borderColor: 'rgba(99, 102, 241, 0.5)',
     color: '#ffffff',
+  },
+  chatSidebar: {
+    width: '260px',
+    background: 'rgba(15, 23, 42, 0.4)',
+    border: '1px solid rgba(148, 163, 184, 0.12)',
+    borderRadius: '12px',
+    padding: '16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '14px',
+    height: '100%',
+    overflow: 'hidden',
+    flexShrink: 0,
+    backdropFilter: 'blur(10px)',
+  },
+  newChatBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    padding: '10px 14px',
+    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.1))',
+    border: '1px solid rgba(99, 102, 241, 0.4)',
+    borderRadius: '8px',
+    color: '#cbd5e1',
+    fontSize: '13px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    width: '100%',
+  },
+  threadList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    overflowY: 'auto',
+    flexGrow: 1,
+    paddingRight: '2px',
+  },
+  threadItem: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '10px 12px',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    border: '1px solid transparent',
+    background: 'transparent',
+  },
+  activeThreadItem: {
+    background: 'rgba(99, 102, 241, 0.15)',
+    borderColor: 'rgba(99, 102, 241, 0.3)',
+  },
+  threadTitle: {
+    fontSize: '13px',
+    color: '#cbd5e1',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    flexGrow: 1,
+  },
+  deleteThreadBtn: {
+    background: 'transparent',
+    border: 'none',
+    color: '#64748b',
+    cursor: 'pointer',
+    padding: '4px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '4px',
+    transition: 'all 0.2s',
   },
   workspace: {
     display: 'flex',

@@ -5,11 +5,13 @@ import Overview from './pages/Overview';
 import AiAnalysis from './pages/AiAnalysis';
 import MarketCompare from './pages/MarketCompare';
 import ChatAssistant from './pages/ChatAssistant';
+import PortfolioAllocation from './pages/PortfolioAllocation';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [username, setUsername] = useState('');
   const [currentView, setCurrentView] = useState('overview');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Kiểm tra token lưu trữ khi khởi động
   useEffect(() => {
@@ -48,6 +50,8 @@ const App: React.FC = () => {
         return <MarketCompare />;
       case 'chat':
         return <ChatAssistant />;
+      case 'portfolio':
+        return <PortfolioAllocation />;
       default:
         return <Overview />;
     }
@@ -64,8 +68,14 @@ const App: React.FC = () => {
         onViewChange={setCurrentView}
         username={username}
         onLogout={handleLogout}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
-      <main style={styles.mainContent}>
+      <main style={{
+        ...styles.mainContent,
+        marginLeft: isSidebarCollapsed ? '80px' : '280px',
+        transition: 'margin-left 0.3s ease',
+      }}>
         {renderActiveView()}
       </main>
     </div>
